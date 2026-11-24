@@ -1,0 +1,55 @@
+{
+  "id": "sparrow-s1",
+  "name": "Sparrow S1",
+  "mass": 960,
+  "fuelCapacity": 150,
+  "inertia": [1825, 2667, 1285],
+  "damping": [500, 400, 300],
+  "fuselageCdA": 0.21,
+  "surfaces": [
+    {
+      "name": "wingL", "kind": "horizontal", "pos": [-2.6, 1.0, 0.15],
+      "area": 8.1, "aspect": 7.5, "span": 11, "incidence": 1.5, "dihedral": 1.7,
+      "cl0": 0.2, "clMax": 1.55, "cd0": 0.009, "e": 0.78,
+      "control": "aileronL", "controlCL": 0.22, "flap": true
+    },
+    {
+      "name": "wingR", "kind": "horizontal", "pos": [2.6, 1.0, 0.15],
+      "area": 8.1, "aspect": 7.5, "span": 11, "incidence": 1.5, "dihedral": 1.7,
+      "cl0": 0.2, "clMax": 1.55, "cd0": 0.009, "e": 0.78,
+      "control": "aileronR", "controlCL": -0.22, "flap": true
+    },
+    {
+      "name": "hstab", "kind": "horizontal", "pos": [0, 0.2, 4.6],
+      "area": 3.0, "aspect": 4, "incidence": -2.0,
+      "cl0": 0, "clMax": 1.2, "clMin": -1.2, "cd0": 0.01, "e": 0.7,
+      "control": "elevator", "controlCL": -0.9, "trimCL": -0.35, "downwash": 0.4, "propwash": true
+    },
+    {
+      "name": "vfin", "kind": "vertical", "pos": [0, 0.9, 4.7],
+      "area": 1.3, "aspect": 1.6,
+      "cl0": 0, "clMax": 1.1, "clMin": -1.1, "cd0": 0.01, "e": 0.6,
+      "control": "rudder", "controlCL": 0.5, "propwash": true
+    }
+  ],
+  "engine": {
+    "type": "piston", "power": 90000, "efficiency": 0.8, "staticThrust": 2500,
+    "idleRpm": 700, "maxRpm": 2700, "torqueFactor": 0.25, "pFactor": 0.06,
+    "fuelBurn": 0.0095, "pos": [0, 0.1, -2.0]
+  },
+  "gear": [
+    { "name": "nose", "pos": [0, -0.55, -1.5], "length": 0.5, "stiffness": 30000, "damping": 3000, "steer": 18, "wheelRadius": 0.22 },
+    { "name": "mainL", "pos": [-1.25, -0.55, 0.35], "length": 0.5, "stiffness": 45000, "damping": 5000, "brakes": true, "wheelRadius": 0.27 },
+    { "name": "mainR", "pos": [1.25, -0.55, 0.35], "length": 0.5, "stiffness": 45000, "damping": 5000, "brakes": true, "wheelRadius": 0.27 }
+  ],
+  "crashPoints": [
+    [-5.5, 1.0, 0.3], [5.5, 1.0, 0.3],
+    [0, -0.8, -2.3],
+    [0, -0.25, 4.9], [0, 1.6, 5.0],
+    [0, -0.65, -0.2]
+  ],
+  "flaps": { "steps": [0, 0.33, 0.67, 1], "clMaxGain": 0.6, "cl0Gain": 0.5, "cdGain": 0.06, "speed": 0.3, "vfe": 85 },
+  "limits": { "vne": 160, "gMax": 3.8, "gMin": -1.5 },
+  "speeds": { "vs0": 40, "vs1": 48, "vr": 55, "vy": 74, "vapp": 65, "vcruise": 110 },
+  "cameras": { "cockpit": [-0.3, 0.75, -0.5], "chase": [0, 2.8, 12] }
+}
