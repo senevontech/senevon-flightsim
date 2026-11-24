@@ -91,7 +91,8 @@ describe("flying in the procedural world", () => {
     c.throttle = 1;
     let airborne = false;
     for (let i = 0; i < 120 * 40; i++) {
-      c.pitch = sim.ias > 55 * KT ? 0.55 : 0;
+      // rotate like a pilot: ease the nose up to a ~10° attitude, don't yank it
+      c.pitch = sim.ias > 55 * KT ? Math.max(-1, Math.min(1, (10 - sim.pitchDeg) * 0.12 - sim.w.x * 1.5)) : 0;
       let hErr = sim.headingDeg - r.headingDeg;
       hErr = ((hErr + 540) % 360) - 180;
       c.yaw = Math.max(-1, Math.min(1, -hErr * 0.3 + sim.w.y * 3));

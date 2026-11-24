@@ -114,7 +114,12 @@ export class Clouds {
           #include <logdepthbuf_fragment>
           float a = min(texture2D(map, vUv).a * 1.25, 1.0) * vNear;
           if (a < 0.01) discard;
-          vec3 col = mix(uShade, uLit, vLight) * (1.0 - uDark * 0.6);
+          // clouds are brighter than the sky behind them (HDR), with flat darker bases
+          vec3 col = mix(uShade * 0.62, uLit, vLight) * (1.0 - uDark * 0.6);
+          col *= mix(0.72, 1.0, smoothstep(0.08, 0.55, vUv.y));
+          // thin edges glow when the sun is behind the cloud (silver lining)
+          col += uLit * (1.0 - a) * 0.6 * (1.0 - uDark);
+          col *= 2.5;
           gl_FragColor = vec4(col, a);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>

@@ -88,7 +88,8 @@ describe("Sparrow S1 flight test", () => {
     c.throttle = 1;
     let liftoff = 0;
     for (let i = 0; i < 120 * 60; i++) {
-      c.pitch = sim.ias > cfg.speeds.vr * KT ? 0.55 : 0;
+      // rotate like a pilot: ease the nose up to a ~10° attitude, don't yank it
+      c.pitch = sim.ias > cfg.speeds.vr * KT ? Math.max(-1, Math.min(1, (10 - sim.pitchDeg) * 0.12 - sim.w.x * 1.5)) : 0;
       // keep straight: heading error (deg, + = nose right of 0) → rudder left; damp yaw rate (w.y + = nose left)
       const hErr = sim.headingDeg > 180 ? sim.headingDeg - 360 : sim.headingDeg;
       c.yaw = Math.max(-1, Math.min(1, -hErr * 0.3 + sim.w.y * 3));

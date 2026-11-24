@@ -7,7 +7,18 @@ import type { MaydayDef, MaydayId } from "../gameplay/mayday";
 
 export type Sensitivity = "low" | "medium" | "high";
 
+export interface HangarEntry {
+  id: string;
+  name: string;
+  description: string;
+  stats: string;
+  current: boolean;
+}
+
 export interface MenuState {
+  hangar: HangarEntry[];
+  /** Current aircraft can start on the water (floats). */
+  canWaterStart: boolean;
   assists: AssistPreset;
   invertPitch: boolean;
   mouseFlying: boolean;
@@ -27,6 +38,8 @@ export interface MenuState {
 }
 
 export interface MenuActions {
+  aircraft(id: string): void;
+  water(): void;
   resume(): void;
   runway(): void;
   approach(): void;
@@ -77,6 +90,8 @@ export class Menu {
         case "tab": this.tab = arg; break;
         case "resume": return this.act.resume();
         case "runway": return this.act.runway();
+        case "water": return this.act.water();
+        case "plane": return this.act.aircraft(arg);
         case "approach": return this.act.approach();
         case "airport": return this.act.airport(Number(arg));
         case "mayday": {
@@ -139,7 +154,7 @@ export class Menu {
       `<div class="seg ${cls}">${items.map(([m, label, on]) => `<button data-m="${m}" class="${on ? "on" : ""}">${label}</button>`).join("")}</div>`;
     const toggle = (m: string, label: string, on: boolean, hint = "") =>
       `<button class="row-btn" data-m="${m}"><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ""}</span><i class="switch ${on ? "on" : ""}"></i></button>`;
-    const tabs = [["fly", "Fly"], ["mayday", "Mayday"], ["weather", "Weather"], ["assists", "Assists"], ["controls", "Controls"], ["graphics", "Graphics"], ...(s.touch ? [] : [["keys", "Keys"]])];
+    const tabs = [["fly", "Fly"], ["hangar", "Hangar"], ["mayday", "Mayday"], ["weather", "Weather"], ["assists", "Assists"], ["controls", "Controls"], ["graphics", "Graphics"], ...(s.touch ? [] : [["keys", "Keys"]])];
     let body = "";
     if (this.tab === "fly") {
       body = `
@@ -147,12 +162,19 @@ export class Menu {
           <button class="big-btn" data-m="runway">Restart on runway</button>
           <button class="big-btn alt" data-m="approach">Final approach</button>
         </div>
+        ${s.canWaterStart ? `<button class="big-btn alt water-btn" data-m="water">Start on the water</button>` : ""}
         <h4>Airports</h4>
         <div class="list">${this.airports.map((a, i) => {
           const r = a.runways[0];
           return `<button class="row-btn ${i === s.airportIndex ? "current" : ""}" data-m="airport:${i}">
             <span><b>${a.id} · ${a.name}</b><small>Runway ${a.runways.map((x) => x.name).join("/")} · ${Math.round(r.length)} m ${r.surface === "grass" ? "grass" : "paved"} · elev ${Math.round(a.elevation * 3.281)} ft</small></span><i class="chev">›</i></button>`;
         }).join("")}</div>`;
+    } else if (this.tab === "hangar") {
+      body = `<div class="list">${s.hangar.map((p) => `
+          <button class="row-btn plane ${p.current ? "current" : ""}" data-m="plane:${p.id}">
+            <span><b>${p.name}</b><small>${p.description}</small><small class="stats">${p.stats}</small></span>
+            <i class="price">${p.current ? "FLYING" : "FLY"}</i>
+          </button>`).join("")}</div>`;
     } else if (this.tab === "mayday") {
       body = `
         <p class="hint">You start in cruise toward the selected airport. Seconds later, something goes wrong. Get it down in one piece.</p>
@@ -196,7 +218,7 @@ export class Menu {
     } else {
       body = `<div class="keys">
         ${[["S / ↓", "Nose up"], ["W / ↑", "Nose down"], ["A D / ← →", "Bank · steer on ground"], ["Q E", "Rudder"], ["Shift / Z", "Throttle up / down"],
-          ["F / V", "Flaps down / up"], ["B / Space", "Brakes"], ["J", "Autopilot"], ["Backspace", "Rewind 10 s"], ["C", "Camera"],
+          ["F / V", "Flaps down / up"], ["B / Space", "Brakes"], ["J", "Autopilot (panel: HDG · ALT · VS · SPD · NAV · APR)"], ["X", "Time acceleration 1× / 2× / 4× / 6×"], ["Backspace", "Rewind 10 s"], ["C", "Camera"],
           ["Tab", "Map size"], ["L", "Final approach"], ["R", "Restart"], ["N", "Next airport"], ["T", "Time of day"], ["M", "Assists"],
           ["Y", "Mouse flying"], ["I", "Invert pitch"], ["Esc / P", "Menu"]]
           .map(([k, v]) => `<div><kbd>${k}</kbd><span>${v}</span></div>`).join("")}

@@ -212,7 +212,7 @@ export class Scatter {
       // coast: palms
       if (h < 14 && roll < 0.22 * (1 - h / 14)) {
         const hgt = 9 + size * 7;
-        put("palm", x, h - 0.3, z, s.set(hgt, hgt, hgt), rot, col.setHSL(0.26 + size * 0.05, 0.45, 0.32));
+        put("palm", x, h - 0.3, z, s.set(hgt, hgt, hgt), rot, col.setHSL(0.26 + size * 0.05, 0.45, 0.3, SRGBColorSpace));
         continue;
       }
       const town = reg.town(x, z, h);
@@ -233,7 +233,7 @@ export class Scatter {
       const f = reg.forest(x, z, h);
       if (roll < f * 0.9 + 0.02) {
         const hgt = 11 + size * 13;
-        put("tree", x, h - 0.4, z, s.set(hgt * 0.9, hgt, hgt * 0.9), rot, col.setHSL(0.24 + size * 0.08, 0.4 + r() * 0.2, 0.2 + r() * 0.1));
+        put("tree", x, h - 0.4, z, s.set(hgt * 0.9, hgt, hgt * 0.9), rot, col.setHSL(0.24 + size * 0.08, 0.35 + r() * 0.2, 0.17 + r() * 0.09, SRGBColorSpace));
       }
     }
     for (const [name, k] of Object.entries(this.kinds) as [KindName, Kind][]) {

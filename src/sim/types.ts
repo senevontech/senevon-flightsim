@@ -39,9 +39,14 @@ export interface SurfaceConfig {
 }
 
 export interface EngineConfig {
-  type: "piston";
-  /** Max shaft power at sea level (W). */
+  /** piston / turboprop drive a propeller (power-based); jet is thrust-based with slow spool-up. */
+  type: "piston" | "turboprop" | "jet";
+  /** Max shaft power at sea level (W) — propeller engines. */
   power: number;
+  /** Max static thrust at sea level (N) — jets. */
+  thrust?: number;
+  /** Time (s) to spool from idle to full power: ~1 s piston, ~3 s turboprop, ~6 s jet. */
+  spoolTime?: number;
   /** Propeller efficiency in cruise. */
   efficiency: number;
   /** Max static thrust (N). */
@@ -66,6 +71,8 @@ export interface GearConfig {
   length: number;
   stiffness: number;
   damping: number;
+  /** "wheel" (default) touches land; "float" touches water (buoyant, hull drag). */
+  kind?: "wheel" | "float";
   /** Nose-wheel steering angle at full rudder (deg). 0 = fixed. */
   steer?: number;
   brakes?: boolean;
@@ -85,8 +92,19 @@ export interface AircraftConfig {
   /** Fuselage drag area Cd·A (m²) acting at the CG. */
   fuselageCdA: number;
   surfaces: SurfaceConfig[];
-  engine: EngineConfig;
+  /** Single engine (legacy) … */
+  engine?: EngineConfig;
+  /** … or several, each at its own position (twins: asymmetric thrust when one fails). */
+  engines?: EngineConfig[];
   gear: GearConfig[];
+  /** Retractable landing gear: transit time (s) and the extra drag area (m²) while down. */
+  retractable?: { time: number; dragArea: number };
+  /** Short description for the hangar. */
+  description?: string;
+  /** Typical throttle on a 3° approach with approach flaps (for spawning on final). */
+  approachPower?: number;
+  /** Handling: multiplies the assists' max roll / pitch rates (aerobatic types roll faster). */
+  agility?: { roll: number; pitch: number };
   /** Points that must never touch the ground (wingtips, tail, nose, prop). Body frame. */
   crashPoints: Vec3Tuple[];
   flaps: { steps: number[]; clMaxGain: number; cl0Gain: number; cdGain: number; speed: number; vfe: number };
@@ -112,9 +130,11 @@ export interface Controls {
   brakes: number;
   /** Elevator trim −1..1, + = nose up. */
   trim: number;
+  /** Landing-gear lever: 1 = down, 0 = up (retractable gear only). */
+  gear: number;
 }
 
-export const emptyControls = (): Controls => ({ pitch: 0, roll: 0, yaw: 0, throttle: 0, flaps: 0, brakes: 0, trim: 0 });
+export const emptyControls = (): Controls => ({ pitch: 0, roll: 0, yaw: 0, throttle: 0, flaps: 0, brakes: 0, trim: 0, gear: 1 });
 
 export const KT = 0.514444; // m/s per knot
 export const FT = 0.3048; // m per foot

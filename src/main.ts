@@ -6,15 +6,16 @@ import { Quaternion, Vector3 } from "three";
 import { AircraftSim, SIM_DT } from "./sim/aircraft";
 import { Assists, type AssistPreset } from "./sim/assists";
 import { Autopilot } from "./sim/autopilot";
+import { ApPanel, type ApAction } from "./ui/apPanel";
 import { DEG, emptyControls, FT, KT } from "./sim/types";
-import { AIRCRAFT } from "./aircraft";
+import { AIRCRAFT, AIRCRAFT_ORDER } from "./aircraft";
 import { ProceduralWorld } from "./world/procedural/ProceduralWorld";
 import { runwayCoords, type Airport, type Runway } from "./world/WorldProvider";
 import { InputManager, MOUSE_RANGE } from "./input/controls";
 import { TouchControls } from "./input/touch";
 import { LandingMonitor, type Grade } from "./gameplay/landing";
 import { TIMES, WorldScene } from "./engine/scene";
-import { AircraftModel } from "./engine/aircraftModel";
+import { AircraftVisual } from "./engine/glbModel";
 import { CameraRig } from "./engine/cameras";
 import { FlightAudio } from "./engine/audio";
 import { Hud } from "./ui/hud";
@@ -39,7 +40,9 @@ const canvas = document.getElementById("view") as HTMLCanvasElement;
 const coarse = matchMedia("(pointer: coarse)").matches;
 if (coarse) document.body.classList.add("touch");
 window.addEventListener("touchstart", () => document.body.classList.add("touch"), { once: true, passive: true });
-const storedQuality = store.get("quality");
+// developer URL options for screenshots and testing: ?quality=low|high&spawn=approach&time=0..4
+const devParams = new URLSearchParams(location.search);
+const storedQuality = devParams.get("quality") ?? store.get("quality");
 const quality: "low" | "high" = storedQuality === "low" || storedQuality === "high"
   ? storedQuality : coarse || Math.min(screen.width, screen.height) < 600 ? "low" : "high";
 
@@ -47,11 +50,13 @@ const world = new ProceduralWorld();
 const airports = world.airports();
 const airportOf = new Map<Runway, Airport>();
 for (const a of airports) for (const r of a.runways) airportOf.set(r, a);
-const cfg = AIRCRAFT["sparrow-s1"];
-const sim = new AircraftSim(cfg, world);
+const savedPlane = store.get("aircraft");
+let cfg = AIRCRAFT[savedPlane && AIRCRAFT[savedPlane] ? savedPlane : "sparrow-s1"];
+let sim = new AircraftSim(cfg, world);
 // default: fair weather with the trade wind from the east-south-east (SKY1's runway 10 into it)
 
 const hud = new Hud(document.getElementById("hud")!, cfg);
+hud.setAircraft(cfg);
 const assists = new Assists();
 const savedPreset = store.get("assists") as AssistPreset | null;
 if (savedPreset === "easy" || savedPreset === "normal" || savedPreset === "real") assists.preset = savedPreset;
@@ -59,12 +64,14 @@ if (savedPreset === "easy" || savedPreset === "normal" || savedPreset === "real"
 const input = new InputManager(cfg.flaps.steps);
 const touch = new TouchControls(input);
 document.body.append(touch.el);
+touch.setGearAvailable(!!cfg.retractable);
 const controls = emptyControls();
 const monitor = new LandingMonitor(() => airports.flatMap((a) => a.runways));
 const scene = new WorldScene(canvas, world, quality);
-const model = new AircraftModel(sim);
+let model = new AircraftVisual(sim);
 scene.scene.add(model.root);
 const rig = new CameraRig(cfg, canvas);
+if (import.meta.env.DEV) (window as unknown as { __skyward: unknown }).__skyward = { scene, world, get sim() { return sim; }, get model() { return model; }, rig };
 rig.ground = (x, z) => world.heightAt(x, z);
 const audio = new FlightAudio();
 const minimap = new Minimap(airports);
@@ -74,6 +81,13 @@ const contrast = new AdaptiveContrast(canvas);
 hud.registerContrast(contrast);
 const autopilot = new Autopilot();
 let apOn = false;
+/** Pilot-selected autopilot values (the panel edits these). */
+const apSel = { hdg: 0, altFt: 3000, vsFpm: 500, ias: 90, at: false, lateral: "hdg" as "hdg" | "nav" | "apr" };
+const apPanel = new ApPanel();
+document.getElementById("hud")!.append(apPanel.el);
+/** Simulation rate (time acceleration): 1×, 2×, 4×, 6×. */
+const SIM_RATES = [1, 2, 4, 6];
+let simRate = 1;
 const mayday = new MaydayDirector();
 const entitlements = new Entitlements(MAYDAYS.filter((m) => m.free).map((m) => maydayItemId(m.id)));
 
@@ -105,6 +119,8 @@ const savedSens = store.get("sensitivity") as Sensitivity | null;
 let sensitivity: Sensitivity = savedSens && savedSens in SENS ? savedSens : coarse ? "medium" : "high";
 input.sensitivity = SENS[sensitivity];
 const stick = emptyControls();
+const surfaceView = emptyControls();
+let shake = 0;
 
 input.invertPitch = store.get("invertPitch") === "1";
 input.mouseFlying = store.get("mouseFlying") === "1";
@@ -175,6 +191,8 @@ function beforeSpawn(): void {
   assists.reset();
   input.resetTrim();
   apOn = false;
+  apPanel.show(false);
+  setSimRate(1, true);
   history.length = 0;
   rewindsLeft = REWINDS[assists.preset];
   mayday.clear();
@@ -202,9 +220,10 @@ function spawnRunway(a: Airport = airports[airportIndex]): void {
   const fx = Math.sin(h), fz = -Math.cos(h);
   input.setFlapIndex(0);
   input.setThrottle(0);
+  input.setGear(true);
   sim.reset({
     pos: new Vector3(r.threshold.x + fx * 25, r.threshold.y + sim.restHeight, r.threshold.z + fz * 25),
-    headingDeg: r.headingDeg, speed: 0,
+    headingDeg: r.headingDeg, speed: 0, gear: 1,
   });
   guideRunway = null;
   departedFrom = a;
@@ -221,16 +240,69 @@ function spawnApproach(): void {
   const d = 3200; // from the aim point, on a 3° glide path
   const along = r.aimPoint - d;
   input.setFlapIndex(1);
-  input.setThrottle(0.34);
+  input.setThrottle(cfg.approachPower ?? 0.34);
+  input.setGear(true);
   sim.reset({
     pos: new Vector3(r.threshold.x + fx * along, r.threshold.y + Math.tan(3 * DEG) * d + sim.restHeight, r.threshold.z + fz * along),
-    headingDeg: r.headingDeg, speed: 68 * KT, pathDeg: -3, pitchDeg: 1, flaps: cfg.flaps.steps[1],
+    headingDeg: r.headingDeg, speed: cfg.speeds.vapp * KT, pathDeg: -3, pitchDeg: 1, flaps: cfg.flaps.steps[1],
+    throttle: cfg.approachPower ?? 0.34, gear: 1,
   });
   guideRunway = r;
   lastGuide = r;
   departedFrom = null;
   afterSpawn(false);
   hud.radio(tower(a), `${CALLSIGN}, ${windText()}, runway ${r.name}, cleared to land.`);
+}
+
+/** Floatplanes: start on open water near the selected airport, pointing into the wind. */
+function spawnWater(): void {
+  if (!sim.hasFloats) return;
+  const a = airports[airportIndex];
+  const r = a.runways[0];
+  const hdg = intoWind(a).headingDeg;
+  const cx = r.threshold.x + Math.sin(r.headingDeg * DEG) * r.length / 2;
+  const cz = r.threshold.z - Math.cos(r.headingDeg * DEG) * r.length / 2;
+  const fx = Math.sin(hdg * DEG), fz = -Math.cos(hdg * DEG);
+  // search outward for a spot with 900 m of open water ahead (into the wind)
+  let spot: { x: number; z: number } | null = null;
+  for (let dist = 800; dist <= 9000 && !spot; dist += 250) {
+    for (let k = 0; k < 16 && !spot; k++) {
+      const ang = (k / 16) * Math.PI * 2;
+      const x = cx + Math.cos(ang) * dist, z = cz + Math.sin(ang) * dist;
+      let clear = true;
+      for (let t = 0; t <= 900 && clear; t += 75) clear = world.region.height(x + fx * t, z + fz * t) < -2;
+      if (clear) spot = { x, z };
+    }
+  }
+  if (!spot) return hud.toast("No open water near this airport");
+  beforeSpawn();
+  input.setFlapIndex(1);
+  input.setThrottle(0);
+  input.setGear(true);
+  sim.reset({ pos: new Vector3(spot.x, 1.55, spot.z), headingDeg: hdg, speed: 0, flaps: cfg.flaps.steps[1] });
+  guideRunway = null;
+  departedFrom = a;
+  afterSpawn(true);
+  hud.radio(tower(a), `${CALLSIGN}, ${windText()}, water takeoff at your discretion.`);
+}
+
+/** Switch aircraft: new physics, model, camera, flaps and HUD; restart on the runway. */
+function selectAircraft(id: string): void {
+  if (!AIRCRAFT[id]) return;
+  cfg = AIRCRAFT[id];
+  sim = new AircraftSim(cfg, world);
+  applyWeather(false);
+  scene.scene.remove(model.root);
+  model.dispose();
+  model = new AircraftVisual(sim);
+  scene.scene.add(model.root);
+  rig.cfg = cfg;
+  input.setFlapSteps(cfg.flaps.steps);
+  hud.setAircraft(cfg);
+  touch.setGearAvailable(!!cfg.retractable);
+  store.set("aircraft", id);
+  spawnRunway();
+  hud.toast(`${cfg.name}`);
 }
 
 /** Mayday scenario: cruise toward the selected airport; a failure follows a few seconds later. */
@@ -252,9 +324,11 @@ function spawnMayday(def: MaydayDef): void {
   const along = r.aimPoint - d;
   input.setFlapIndex(0);
   input.setThrottle(0.65);
+  input.setGear(!cfg.retractable);
   sim.reset({
     pos: new Vector3(r.threshold.x + fx * along, r.threshold.y + 760, r.threshold.z + fz * along),
-    headingDeg: r.headingDeg, speed: 100 * KT, pitchDeg: 1,
+    headingDeg: r.headingDeg, speed: Math.min(cfg.speeds.vcruise * 0.8, cfg.speeds.vy * 1.6) * KT, pitchDeg: 1,
+    throttle: 0.65, gear: cfg.retractable ? 0 : 1,
   });
   guideRunway = r;
   lastGuide = r;
@@ -302,6 +376,8 @@ function rewind(): void {
   rewindsLeft--;
   assists.reset();
   apOn = false;
+  apPanel.show(false);
+  setSimRate(1, true);
   monitor.reset(sim.onGround);
   hud.hideCard();
   cardOpen = false;
@@ -312,18 +388,107 @@ function rewind(): void {
   hud.toast(Number.isFinite(rewindsLeft) ? `Rewound 10 s · ${rewindsLeft} left` : "Rewound 10 s");
 }
 
+/** Approach fix 6 km out on the extended centreline of the into-wind runway of an airport. */
+function approachFix(a: Airport): { x: number; z: number; runway: Runway } {
+  const r = intoWind(a);
+  const h = r.headingDeg * DEG;
+  const along = r.aimPoint - 6000;
+  return { x: r.threshold.x + Math.sin(h) * along, z: r.threshold.z - Math.cos(h) * along, runway: r };
+}
+
+function apOff(reason: string): void {
+  if (!apOn) return;
+  apOn = false;
+  // hand the throttle back where the autothrottle left it (no jump)
+  if (apSel.at) input.setThrottle(controls.throttle);
+  apPanel.show(false);
+  hud.toast(reason);
+  audio.chime?.();
+}
+
+function applyApTargets(): void {
+  const t = autopilot.targets;
+  t.heading = apSel.hdg;
+  t.altitude = apSel.altFt * FT;
+  t.vs = Math.max(100, Math.abs(apSel.vsFpm)) * 0.00508;
+  t.ias = apSel.ias;
+  t.autothrottle = apSel.at;
+  t.lateral = apSel.lateral;
+  if (apSel.lateral === "apr") t.vertical = "gs";
+  else t.vertical = "alt";
+}
+
 function toggleAutopilot(): void {
-  if (apOn) {
-    apOn = false;
-    return hud.toast("Autopilot off");
-  }
+  if (apOn) return apOff("Autopilot off");
   if (sim.onGround || sim.agl < 60) return hud.toast("Autopilot: climb above 200 ft first");
-  const alt = Math.round(sim.pos.y / FT / 100) * 100 * FT;
-  const hdg = Math.round(sim.headingDeg / 5) * 5;
+  apSel.hdg = Math.round(sim.headingDeg / 5) * 5 % 360;
+  apSel.altFt = Math.round(sim.pos.y / FT / 100) * 100;
+  apSel.ias = Math.round(sim.ias / KT / 5) * 5;
+  apSel.lateral = "hdg";
+  apSel.at = false;
   autopilot.reset();
-  autopilot.targets = { altitude: alt, heading: hdg };
+  autopilot.targets = {};
+  applyApTargets();
   apOn = true;
-  hud.toast(`Autopilot on · HDG ${String(hdg).padStart(3, "0")} · ${Math.round(alt / FT)} ft`);
+  apPanel.show(true);
+  hud.toast(`Autopilot on · HDG ${String(apSel.hdg).padStart(3, "0")} · ${apSel.altFt} ft`);
+}
+
+apPanel.onAction((a: ApAction) => {
+  if (a === "ap") return toggleAutopilot();
+  switch (a) {
+    case "hdg": apSel.lateral = "hdg"; apSel.hdg = Math.round(sim.headingDeg); break;
+    case "hdg-": apSel.hdg = (apSel.hdg + 359) % 360; break;
+    case "hdg+": apSel.hdg = (apSel.hdg + 1) % 360; break;
+    case "alt-": apSel.altFt = Math.max(500, apSel.altFt - 100); break;
+    case "alt+": apSel.altFt = Math.min(12000, apSel.altFt + 100); break;
+    case "vs-": apSel.vsFpm = Math.max(100, apSel.vsFpm - 100); break;
+    case "vs+": apSel.vsFpm = Math.min(1500, apSel.vsFpm + 100); break;
+    case "spd-": apSel.ias = Math.max(cfg.speeds.vs1 + 5, apSel.ias - 1); break;
+    case "spd+": apSel.ias = Math.min(cfg.limits.vne - 10, apSel.ias + 1); break;
+    case "at": apSel.at = !apSel.at; if (!apSel.at) input.setThrottle(controls.throttle); break;
+    case "nav": {
+      const a2 = nearestAirport();
+      const fix = approachFix(a2);
+      apSel.lateral = "nav";
+      autopilot.targets.nav = { x: fix.x, z: fix.z };
+      autopilot.targets.runway = fix.runway;
+      hud.toast(`NAV → ${a2.name} approach, runway ${fix.runway.name}`);
+      break;
+    }
+    case "apr": {
+      const r = guideRunway ?? pickGuide() ?? intoWind(nearestAirport());
+      apSel.lateral = "apr";
+      autopilot.targets.runway = r;
+      autopilot.reset();
+      hud.toast(`APR armed · ${airportOf.get(r)?.name} runway ${r.name}`);
+      break;
+    }
+  }
+  applyApTargets();
+});
+
+/** Per-step autopilot housekeeping: NAV → APR hand-over, minimums. */
+function autopilotLogic(): void {
+  const t = autopilot.targets;
+  if (apSel.lateral === "nav" && t.nav && Math.hypot(t.nav.x - sim.pos.x, t.nav.z - sim.pos.z) < 900) {
+    apSel.lateral = "apr";
+    autopilot.reset();
+    applyApTargets();
+    hud.toast(`APR · runway ${t.runway?.name}`);
+  }
+  if (apSel.lateral === "apr" && autopilot.atMinimums(sim)) apOff("MINIMUMS · your airplane: land it!");
+}
+
+function setSimRate(r: number, quiet = false): void {
+  if (r > 1 && (sim.onGround || sim.agl < 150)) {
+    if (!quiet) hud.toast("Time acceleration works above 500 ft");
+    r = 1;
+  }
+  if (r === simRate) return;
+  simRate = r;
+  hud.setSimRate(simRate);
+  if (!quiet) hud.toast(simRate === 1 ? "Normal speed" : `Simulation ${simRate}×`);
 }
 
 monitor.onResult = (r) => {
@@ -371,7 +536,22 @@ const menu = new Menu(airports, () => ({
   storeAvailable: entitlements.storeAvailable,
   devBuild: entitlements.devBuild,
   devUnlockAll: entitlements.devUnlockAll,
+  canWaterStart: sim.hasFloats,
+  hangar: AIRCRAFT_ORDER.map((id) => {
+    const c = AIRCRAFT[id];
+    const engines = c.engines ?? [c.engine!];
+    const kind = engines[0].type === "jet" ? "jet" : engines[0].type === "turboprop" ? "turboprop" : "piston";
+    return {
+      id,
+      name: c.name,
+      description: c.description ?? "",
+      stats: `${c.speeds.vcruise} kt cruise · ${engines.length > 1 ? "twin " : ""}${kind} · ${c.retractable ? "retractable gear" : c.gear.some((g) => g.kind === "float") ? "amphibian floats" : "fixed gear"}`,
+      current: id === cfg.id,
+    };
+  }),
 }), {
+  aircraft: (id) => { menu.close(); selectAircraft(id); },
+  water: () => { menu.close(); spawnWater(); },
   resume: () => menu.close(),
   runway: () => { menu.close(); spawnRunway(); },
   approach: () => { menu.close(); spawnApproach(); },
@@ -417,6 +597,7 @@ const menu = new Menu(airports, () => ({
 document.body.append(menu.el);
 const toggleMenu = () => (menu.isOpen ? menu.close() : menu.open());
 hud.onMenu = toggleMenu;
+hud.onSimRate = () => setSimRate(SIM_RATES[(SIM_RATES.indexOf(simRate) + 1) % SIM_RATES.length]);
 if (store.get("tilt") === "1" && coarse) touch.setTilt(true);
 
 function setAssists(p: AssistPreset): void {
@@ -472,6 +653,11 @@ input.onAction((a) => {
       break;
     case "map": minimap.toggle(); break;
     case "autopilot": toggleAutopilot(); break;
+    case "gear":
+      if (!cfg.retractable) hud.toast("Fixed landing gear");
+      else hud.toast(input.raw.gear > 0.5 ? "Gear down" : "Gear up");
+      break;
+    case "simRate": setSimRate(SIM_RATES[(SIM_RATES.indexOf(simRate) + 1) % SIM_RATES.length]); break;
     case "rewind": rewind(); break;
     case "assists": {
       const order: AssistPreset[] = ["easy", "normal", "real"];
@@ -557,21 +743,25 @@ function frame(now: number): void {
   const running = !menu.isOpen && !hud.helpVisible && !loading;
 
   if (running) {
-    acc += dt;
+    // time acceleration: run more fixed steps per frame (physics stays exactly the same)
+    if (simRate > 1 && (sim.onGround || sim.agl < 150 || cardOpen)) {
+      setSimRate(1, true);
+      hud.toast("Back to normal speed below 500 ft");
+    }
+    acc += dt * simRate;
     let steps = 0;
-    while (acc >= SIM_DT && steps < 8) {
+    const maxSteps = 8 * simRate;
+    while (acc >= SIM_DT && steps < maxSteps) {
       prevPos.copy(sim.pos);
       prevQ.copy(sim.q);
       if (apOn) {
         // the pilot taking the stick disconnects the autopilot
-        if (Math.abs(raw.pitch) > 0.35 || Math.abs(raw.roll) > 0.35 || sim.onGround) {
-          apOn = false;
-          hud.toast("Autopilot disconnected");
-        }
+        if (Math.abs(raw.pitch) > 0.35 || Math.abs(raw.roll) > 0.35 || sim.onGround) apOff("Autopilot disconnected");
       }
       if (apOn) {
         Object.assign(controls, raw);
         autopilot.update(sim, SIM_DT, controls);
+        autopilotLogic();
       } else {
         // stick sensitivity scales the pilot's pitch / roll (and ground steering)
         Object.assign(stick, raw);
@@ -585,9 +775,9 @@ function frame(now: number): void {
       acc -= SIM_DT;
       steps++;
     }
-    if (steps === 8) acc = 0; // too slow: drop time rather than spiral
-    // rewind history: one snapshot every 0.25 s, 10 s deep
-    historyTimer += dt;
+    if (steps === maxSteps) acc = 0; // too slow: drop time rather than spiral
+    // rewind history: one snapshot every 0.25 s of simulated time, 10 s deep
+    historyTimer += dt * simRate;
     if (historyTimer > 0.25 && !sim.crashed) {
       historyTimer = 0;
       history.push(sim.snapshot());
@@ -597,7 +787,7 @@ function frame(now: number): void {
 
   if (sim.crashed && !crashShown) {
     crashShown = true;
-    apOn = false;
+    apOff("Autopilot off");
     hud.showCrash(sim.crashed);
     hud.radio(tower(nearestAirport()), "Emergency services are on their way.");
     cardOpen = true;
@@ -607,7 +797,16 @@ function frame(now: number): void {
   renderPos.copy(prevPos).lerp(sim.pos, alpha);
   renderQ.copy(prevQ).slerp(sim.q, alpha);
 
-  model.update(renderPos, renderQ, controls, sim, running ? dt : 0);
+  // the model shows where the control surfaces actually are (they lag the stick like real linkages)
+  surfaceView.pitch = sim.surfacePos.pitch;
+  surfaceView.roll = sim.surfacePos.roll;
+  surfaceView.yaw = sim.surfacePos.yaw;
+  surfaceView.trim = controls.trim;
+  model.update(renderPos, renderQ, surfaceView, sim, running ? dt * simRate : 0);
+  // camera shake: turbulence / g changes, runway roll, engine at high power (cockpit)
+  shake += ((Math.min(1, Math.abs(sim.gLoad - 1) * 1.5) + (sim.onGround ? Math.min(1, sim.groundSpeed / 30) * 0.6 : 0)
+    + (rig.mode === "cockpit" ? (sim.rpm / sim.engines[0].maxRpm) * 0.25 : 0)) - shake) * Math.min(1, dt * 6);
+  rig.shake = running ? shake : 0;
   rig.velocity.copy(sim.vel);
   towerPosition(nearestAirport(), towerTmp);
   rig.towerPos.copy(towerTmp);
@@ -628,22 +827,43 @@ function frame(now: number): void {
   }
 
   const stall = assists.stallWarning(sim);
-  const t = autopilot.targets;
+  const gearWarn = !!cfg.retractable && sim.gearDown < 0.9 && !sim.onGround && sim.agl < 150 && controls.throttle < 0.3;
+  const overspeed = sim.ias > cfg.limits.vne * KT;
+  const warning = overspeed ? "OVERSPEED" : gearWarn ? "GEAR" : null;
   hud.update(sim, controls, {
     mode: assists.preset,
     stall,
     best,
-    autopilot: apOn ? `AP ${String(t.heading ?? 0).padStart(3, "0")}° ${Math.round((t.altitude ?? 0) / FT)}FT` : null,
+    autopilot: apOn ? `AP ${autopilot.status.lateral} ${autopilot.status.vertical}` : null,
     rewinds: Number.isFinite(rewindsLeft) ? rewindsLeft : null,
+    warning,
   }, now);
+  if (apOn) {
+    apPanel.render({
+      lateralAnn: autopilot.status.lateral,
+      verticalAnn: autopilot.status.vertical,
+      lateral: apSel.lateral,
+      hdg: apSel.hdg,
+      altFt: apSel.altFt,
+      vsFpm: apSel.vsFpm,
+      ias: apSel.ias,
+      at: apSel.at,
+    });
+  }
   hud.setYoke(input.mouseFlying && input.device === "mouse" ? input.mouseStick : null, Math.min(window.innerWidth, window.innerHeight) * MOUSE_RANGE);
   minimap.draw(renderPos.x, renderPos.z, sim.headingDeg, now);
   updateNav();
-  audio.update(sim, stall, rig.mode === "cockpit", !running);
-  scene.renderer.render(scene.scene, rig.camera);
+  audio.update(sim, Math.max(stall, warning ? 1 : 0), rig.mode === "cockpit", !running);
+  scene.render(rig.camera);
   contrast.update(now); // right after rendering, while the frame is still in the drawing buffer
   requestAnimationFrame(frame);
 }
 
-spawnRunway();
+{
+  const t = Number(devParams.get("time"));
+  if (devParams.has("time") && TIMES[t] !== undefined) setTime(t);
+  const sp = devParams.get("spawn");
+  if (sp === "approach") spawnApproach();
+  else spawnRunway();
+}
 requestAnimationFrame(frame);

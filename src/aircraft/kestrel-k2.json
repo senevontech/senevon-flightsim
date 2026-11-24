@@ -1,0 +1,239 @@
+{
+  "id": "kestrel-k2",
+  "name": "Kestrel K2",
+  "description": "Two-seat aerobatic monoplane. Huge ailerons, a 220 kW engine and +8 / \u22126 g: it rolls in a blink and climbs like a rocket.",
+  "mass": 720,
+  "fuelCapacity": 120,
+  "inertia": [
+    900,
+    1300,
+    600
+  ],
+  "damping": [
+    250,
+    200,
+    120
+  ],
+  "fuselageCdA": 0.19,
+  "controlRate": 8,
+  "agility": {
+    "roll": 2.2,
+    "pitch": 1.5
+  },
+  "surfaces": [
+    {
+      "name": "wingL",
+      "kind": "horizontal",
+      "pos": [
+        -1.9,
+        -0.35,
+        0.1
+      ],
+      "area": 5.0,
+      "aspect": 5.6,
+      "span": 7.5,
+      "incidence": 0.96,
+      "dihedral": 3.5,
+      "cl0": 0.05,
+      "clMax": 1.35,
+      "clMin": -1.2,
+      "cd0": 0.008,
+      "e": 0.8,
+      "control": "aileronL",
+      "controlCL": 0.35,
+      "flap": true
+    },
+    {
+      "name": "wingR",
+      "kind": "horizontal",
+      "pos": [
+        1.9,
+        -0.35,
+        0.1
+      ],
+      "area": 5.0,
+      "aspect": 5.6,
+      "span": 7.5,
+      "incidence": 1.04,
+      "dihedral": 3.5,
+      "cl0": 0.05,
+      "clMax": 1.35,
+      "clMin": -1.2,
+      "cd0": 0.008,
+      "e": 0.8,
+      "control": "aileronR",
+      "controlCL": -0.35,
+      "flap": true
+    },
+    {
+      "name": "hstab",
+      "kind": "horizontal",
+      "pos": [
+        0,
+        0.1,
+        3.9
+      ],
+      "area": 2.2,
+      "aspect": 4,
+      "incidence": -1.5,
+      "cl0": 0,
+      "clMax": 1.2,
+      "clMin": -1.2,
+      "cd0": 0.01,
+      "e": 0.7,
+      "control": "elevator",
+      "controlCL": -1.0,
+      "trimCL": -0.35,
+      "downwash": 0.35,
+      "propwash": true
+    },
+    {
+      "name": "vfin",
+      "kind": "vertical",
+      "pos": [
+        0,
+        0.6,
+        4.0
+      ],
+      "area": 1.2,
+      "aspect": 1.6,
+      "incidence": 1.0,
+      "cl0": 0,
+      "clMax": 1.1,
+      "clMin": -1.1,
+      "cd0": 0.01,
+      "e": 0.6,
+      "control": "rudder",
+      "controlCL": 0.55,
+      "propwash": true
+    }
+  ],
+  "engine": {
+    "type": "piston",
+    "power": 220000,
+    "efficiency": 0.82,
+    "staticThrust": 4600,
+    "spoolTime": 0.5,
+    "idleRpm": 750,
+    "maxRpm": 2700,
+    "torqueFactor": 0.2,
+    "pFactor": 0.05,
+    "fuelBurn": 0.02,
+    "pos": [
+      0,
+      0,
+      -1.8
+    ]
+  },
+  "gear": [
+    {
+      "name": "nose",
+      "pos": [
+        0,
+        -0.5,
+        -1.3
+      ],
+      "length": 0.45,
+      "stiffness": 25000,
+      "damping": 2500,
+      "steer": 18,
+      "wheelRadius": 0.2
+    },
+    {
+      "name": "mainL",
+      "pos": [
+        -1.1,
+        -0.5,
+        0.3
+      ],
+      "length": 0.45,
+      "stiffness": 38000,
+      "damping": 4000,
+      "brakes": true,
+      "wheelRadius": 0.22
+    },
+    {
+      "name": "mainR",
+      "pos": [
+        1.1,
+        -0.5,
+        0.3
+      ],
+      "length": 0.45,
+      "stiffness": 38000,
+      "damping": 4000,
+      "brakes": true,
+      "wheelRadius": 0.22
+    }
+  ],
+  "crashPoints": [
+    [
+      -3.75,
+      -0.3,
+      0.2
+    ],
+    [
+      3.75,
+      -0.3,
+      0.2
+    ],
+    [
+      0,
+      -0.82,
+      -2.1
+    ],
+    [
+      0,
+      -0.05,
+      4.2
+    ],
+    [
+      0,
+      1.3,
+      4.3
+    ],
+    [
+      0,
+      -0.6,
+      -0.2
+    ]
+  ],
+  "flaps": {
+    "steps": [
+      0,
+      0.5,
+      1
+    ],
+    "clMaxGain": 0.25,
+    "cl0Gain": 0.2,
+    "cdGain": 0.04,
+    "speed": 0.4,
+    "vfe": 110
+  },
+  "limits": {
+    "vne": 220,
+    "gMax": 8,
+    "gMin": -6
+  },
+  "speeds": {
+    "vs0": 55,
+    "vs1": 59,
+    "vr": 62,
+    "vy": 85,
+    "vapp": 75,
+    "vcruise": 170
+  },
+  "cameras": {
+    "cockpit": [
+      0,
+      0.55,
+      0.3
+    ],
+    "chase": [
+      0,
+      2.4,
+      10
+    ]
+  },
+  "approachPower": 0.3
+}

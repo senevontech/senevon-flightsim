@@ -75,12 +75,12 @@ const C = {
   deep: srgb(0x0b3a62),
   mid: srgb(0x13728f),
   shallow: srgb(0x3ccfc4),
-  sand: srgb(0xe2d3a4),
+  sand: srgb(0xc8b487),
   wetSand: srgb(0xc8b383),
-  grass: srgb(0x5c8f3a),
-  lush: srgb(0x3f7a2c),
+  grass: srgb(0x5b7b3d),
+  lush: srgb(0x3f6531),
   forest: srgb(0x2c5a24),
-  dry: srgb(0x8f9a52),
+  dry: srgb(0x8a8f55),
   rock: srgb(0x7b7064),
   lava: srgb(0x3d3632),
   airfield: srgb(0x7aa553),
@@ -216,8 +216,8 @@ export class CoralCoast {
     blendInto(C.forest, this.forest(x, z, h) * 0.85);
     blendInto(C.airfield, this.airportZone(x, z) * 0.8);
     // beaches
-    blendInto(C.sand, 1 - smoothstep(2.5, 6, h + v * 2));
-    blendInto(C.wetSand, 1 - smoothstep(0, 1.2, h));
+    blendInto(C.sand, 1 - smoothstep(0.7, 2.0, h + v * 1.2));
+    blendInto(C.wetSand, 1 - smoothstep(0, 0.7, h));
     // rock on steep slopes and high ground; dark volcanic rock above 700 m
     const steep = smoothstep(0.86, 0.72, ny);
     blendInto(C.rock, Math.max(steep, smoothstep(480, 700, h + v * 40)));

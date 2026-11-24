@@ -36,8 +36,28 @@ Each aircraft model needs **separate named nodes** for animated parts: `aileron_
 `elevator`, `rudder`, `flap_L`, `flap_R`, `gear_*`, `prop`, `door_*`, plus empties for the camera
 points and wheel contact points.
 
+## 3b. Using open-licence aircraft models (GLB)
+
+Pipeline (built 2026-11-24): `src/engine/modelSpecs.ts` maps an aircraft id to a GLB in
+`public/models/`; `src/engine/glbModel.ts` loads it (Meshopt supported), fits it to the flight model
+(nose to −Z via `yawDeg`, scaled to the design wingspan, centred on the fuselage, wheels on the sim's
+gear contact line, optional `offset`) and drives its parts. Until the file loads, or if it fails,
+the coded model is shown. Dev URL options: `?glb=<file>` tries a file on the current aircraft,
+`?model=coded` forces the coded model; `window.__skyward.model.parts` lists what was bound.
+
+Preparing a model (Blender):
+1. Licence is CC0 or CC-BY (never NC, never GPL, never "editorial"); record it below.
+2. Remove maker names, logos, real registrations and recognisable real liveries; paint ours.
+3. Split moving parts into separate objects and set each origin on its hinge line:
+   `aileron_L`, `aileron_R`, `flap_L`, `flap_R`, `elevator` (or `elevator_L/R`), `rudder`, `prop`
+   (origin at the hub, spinning about local Z), `gear_*` (folds away with the gear lever).
+   Hinged surfaces rotate about local X (rudder: local Y); set `parts` in the spec to override.
+4. Decimate to ≤ 25 k triangles and export GLB with Meshopt compression (≤ 1.5 MB).
+
 ## 4. Asset register
 
 | File | Source | Licence | Author | Added |
 |------|--------|---------|--------|-------|
-| — | — | — | — | — |
+| Aircraft models (all 5) | Procedural, built in code from `src/engine/designs.ts` | Original (Skyward) | Skyward team | 2026-11-24 |
+| Liveries (all 5) | Canvas-painted in `src/engine/aircraftModel.ts` | Original (Skyward) | Skyward team | 2026-11-24 |
+| `public/icon/snv-air-icon*.png` (favicon 32/512, touch icon 180; cropped square from the owner's original) | Supplied by owner | Owner-provided | Senevon | 2026-11-24 |

@@ -32,8 +32,11 @@ export class CameraRig {
   towerPos = new Vector3();
   velocity = new Vector3();
   private flyPos: Vector3 | null = null;
+  /** 0..1 camera shake (turbulence, runway roll, engine); set every frame by the game. */
+  shake = 0;
+  private shakeT = 0;
 
-  constructor(private cfg: AircraftConfig, el: HTMLElement) {
+  constructor(public cfg: AircraftConfig, el: HTMLElement) {
     el.addEventListener("contextmenu", (e) => e.preventDefault());
     el.addEventListener("pointerdown", (e) => {
       if (e.button === 0 && !this.leftButtonOrbits) return;
@@ -65,8 +68,7 @@ export class CameraRig {
     this.mode = MODES[(MODES.indexOf(this.mode) + 1) % MODES.length];
     this.resetView();
     this.flyPos = null;
-    this.camera.fov = this.mode === "cockpit" ? 72 : this.mode === "wing" ? 70 : 60;
-    this.camera.updateProjectionMatrix();
+    this.applyFov();
     return CAMERA_NAMES[this.mode];
   }
 
@@ -76,10 +78,36 @@ export class CameraRig {
 
   resize(w: number, h: number): void {
     this.camera.aspect = w / h;
+    this.applyFov();
+  }
+
+  /** Vertical field of view for the mode. On tall (portrait) screens it widens so the view
+      keeps at least the side-to-side angle a 6:5 screen would show. */
+  private applyFov(): void {
+    const base = this.mode === "cockpit" ? 72 : this.mode === "wing" ? 70 : 60;
+    const minAspect = 1.2, a = this.camera.aspect;
+    let fov = base;
+    if (a < minAspect) {
+      const half = Math.atan(Math.tan((base * Math.PI) / 360) * minAspect / a);
+      fov = Math.min(100, (half * 360) / Math.PI);
+    }
+    this.camera.fov = fov;
     this.camera.updateProjectionMatrix();
   }
 
   update(pos: Vector3, q: Quaternion, dt: number, groundY: number): void {
+    this.place(pos, q, dt, groundY);
+    // small, smooth shake (summed sines: no jitter, no randomness between frames)
+    if (this.shake > 0.01 && this.mode !== "tower") {
+      this.shakeT += dt;
+      const t = this.shakeT, k = this.shake * (this.mode === "cockpit" ? 0.006 : 0.004);
+      this.camera.rotateX(k * (Math.sin(t * 23.1) + 0.6 * Math.sin(t * 37.7)));
+      this.camera.rotateY(k * 0.6 * Math.sin(t * 29.3 + 1.3));
+      this.camera.rotateZ(k * 0.8 * Math.sin(t * 17.9 + 0.7));
+    }
+  }
+
+  private place(pos: Vector3, q: Quaternion, dt: number, groundY: number): void {
     const cam = this.camera;
     // let the orbit drift back behind the aircraft when not dragging
     if (!this.dragging) {

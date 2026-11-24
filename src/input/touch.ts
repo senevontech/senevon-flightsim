@@ -23,7 +23,7 @@ export class TouchControls {
   };
 
   constructor(private input: InputManager) {
-    this.el.className = "touch";
+    this.el.className = "touch-ui"; // not "touch": that class marks <body> in touch mode
     this.el.innerHTML = `
       <div class="tc-stick-zone" data-t="zone">
         <div class="tc-stick" data-t="base"><div class="tc-knob" data-t="knob"></div></div>
@@ -36,6 +36,7 @@ export class TouchControls {
           <button data-a="brake" aria-label="Brakes (hold)">BRK</button>
           <button data-a="camera" aria-label="Camera">CAM</button>
           <button data-a="autopilot" aria-label="Autopilot">AP</button>
+          <button data-a="gear" aria-label="Landing gear">GEAR</button>
           <button data-a="rewind" aria-label="Rewind 10 seconds">⟲ 10s</button>
         </div>
         <div class="tc-throttle" data-t="thr" aria-label="Throttle">
@@ -73,6 +74,7 @@ export class TouchControls {
       if (e.pointerId !== this.stickId) return;
       this.stickId = null;
       this.stickBase.classList.remove("active");
+      this.stickBase.style.left = this.stickBase.style.top = ""; // back to its rest spot
       this.knob.style.transform = "translate(-50%, -50%)";
       this.input.touch.pitch = this.input.touch.roll = 0;
       this.input.touch.active = false;
@@ -120,7 +122,10 @@ export class TouchControls {
       b.addEventListener("click", () => {
         if (a === "flapsUp") this.input.stepFlaps(-1);
         else if (a === "flapsDown") this.input.stepFlaps(1);
-        else this.input.trigger(a as "camera" | "autopilot" | "rewind");
+        else if (a === "gear") {
+          this.input.setGear(this.input.raw.gear <= 0.5);
+          this.input.trigger("gear");
+        } else this.input.trigger(a as "camera" | "autopilot" | "rewind");
         navigator.vibrate?.(8);
       });
     }
@@ -141,6 +146,13 @@ export class TouchControls {
     this.input.touch.roll = dz(dx);
     // stick convention: pull back (drag down) = nose up
     this.input.touch.pitch = dz(dy);
+  }
+
+  /** Show the GEAR button only on aircraft with retractable gear. */
+  setGearAvailable(on: boolean): void {
+    this.el.querySelector("[data-a=gear]")?.classList.toggle("hidden", !on);
+    // keep the grid tidy: with GEAR the rewind button is the odd one out and spans both columns
+    this.el.querySelector("[data-a=rewind]")?.classList.toggle("wide", on);
   }
 
   get tilt(): boolean {

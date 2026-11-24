@@ -1,0 +1,264 @@
+{
+  "id": "heron-t2",
+  "name": "Heron T2",
+  "description": "Twin-turboprop commuter, 12 seats. Retractable gear, 2 \u00d7 560 kW, and a big rudder for flying on one engine.",
+  "mass": 4600,
+  "fuelCapacity": 1000,
+  "inertia": [
+    16000,
+    26000,
+    13000
+  ],
+  "damping": [
+    4000,
+    3500,
+    2500
+  ],
+  "fuselageCdA": 0.46,
+  "controlRate": 3.5,
+  "retractable": {
+    "time": 6,
+    "dragArea": 0.35
+  },
+  "surfaces": [
+    {
+      "name": "wingL",
+      "kind": "horizontal",
+      "pos": [
+        -3.9,
+        -0.6,
+        0.3
+      ],
+      "area": 14.1,
+      "aspect": 9.8,
+      "span": 16.6,
+      "incidence": 2.0,
+      "dihedral": 5,
+      "cl0": 0.25,
+      "clMax": 1.6,
+      "cd0": 0.009,
+      "e": 0.8,
+      "control": "aileronL",
+      "controlCL": 0.2,
+      "flap": true
+    },
+    {
+      "name": "wingR",
+      "kind": "horizontal",
+      "pos": [
+        3.9,
+        -0.6,
+        0.3
+      ],
+      "area": 14.1,
+      "aspect": 9.8,
+      "span": 16.6,
+      "incidence": 2.0,
+      "dihedral": 5,
+      "cl0": 0.25,
+      "clMax": 1.6,
+      "cd0": 0.009,
+      "e": 0.8,
+      "control": "aileronR",
+      "controlCL": -0.2,
+      "flap": true
+    },
+    {
+      "name": "hstab",
+      "kind": "horizontal",
+      "pos": [
+        0,
+        0.4,
+        7.5
+      ],
+      "area": 7.0,
+      "aspect": 5,
+      "incidence": -2.0,
+      "cl0": 0,
+      "clMax": 1.2,
+      "clMin": -1.2,
+      "cd0": 0.01,
+      "e": 0.7,
+      "control": "elevator",
+      "controlCL": -0.9,
+      "trimCL": -0.35,
+      "downwash": 0.4
+    },
+    {
+      "name": "vfin",
+      "kind": "vertical",
+      "pos": [
+        0,
+        1.2,
+        7.8
+      ],
+      "area": 4.5,
+      "aspect": 1.7,
+      "cl0": 0,
+      "clMax": 1.1,
+      "clMin": -1.1,
+      "cd0": 0.01,
+      "e": 0.6,
+      "control": "rudder",
+      "controlCL": 0.6
+    }
+  ],
+  "engines": [
+    {
+      "type": "turboprop",
+      "power": 560000,
+      "efficiency": 0.82,
+      "staticThrust": 9000,
+      "spoolTime": 3,
+      "idleRpm": 1200,
+      "maxRpm": 2000,
+      "torqueFactor": 0,
+      "pFactor": 0,
+      "fuelBurn": 0.05,
+      "pos": [
+        -3.0,
+        -0.2,
+        -1.5
+      ]
+    },
+    {
+      "type": "turboprop",
+      "power": 560000,
+      "efficiency": 0.82,
+      "staticThrust": 9000,
+      "spoolTime": 3,
+      "idleRpm": 1200,
+      "maxRpm": 2000,
+      "torqueFactor": 0,
+      "pFactor": 0,
+      "fuelBurn": 0.05,
+      "pos": [
+        3.0,
+        -0.2,
+        -1.5
+      ]
+    }
+  ],
+  "gear": [
+    {
+      "name": "nose",
+      "pos": [
+        0,
+        -0.9,
+        -3.2
+      ],
+      "length": 0.7,
+      "stiffness": 80000,
+      "damping": 10000,
+      "steer": 25,
+      "wheelRadius": 0.3
+    },
+    {
+      "name": "mainL",
+      "pos": [
+        -2.0,
+        -0.9,
+        0.6
+      ],
+      "length": 0.7,
+      "stiffness": 150000,
+      "damping": 20000,
+      "brakes": true,
+      "wheelRadius": 0.32
+    },
+    {
+      "name": "mainR",
+      "pos": [
+        2.0,
+        -0.9,
+        0.6
+      ],
+      "length": 0.7,
+      "stiffness": 150000,
+      "damping": 20000,
+      "brakes": true,
+      "wheelRadius": 0.32
+    }
+  ],
+  "crashPoints": [
+    [
+      -8.3,
+      -0.4,
+      0.6
+    ],
+    [
+      8.3,
+      -0.4,
+      0.6
+    ],
+    [
+      -3.0,
+      -1.35,
+      -2.8
+    ],
+    [
+      3.0,
+      -1.35,
+      -2.8
+    ],
+    [
+      0,
+      -1.1,
+      -4.5
+    ],
+    [
+      0,
+      -0.2,
+      8.0
+    ],
+    [
+      0,
+      2.6,
+      8.2
+    ],
+    [
+      0,
+      -1.0,
+      0.0
+    ]
+  ],
+  "flaps": {
+    "steps": [
+      0,
+      0.33,
+      0.67,
+      1
+    ],
+    "clMaxGain": 0.8,
+    "cl0Gain": 0.55,
+    "cdGain": 0.07,
+    "speed": 0.2,
+    "vfe": 150
+  },
+  "limits": {
+    "vne": 260,
+    "gMax": 3.4,
+    "gMin": -1.3
+  },
+  "speeds": {
+    "vs0": 68,
+    "vs1": 84,
+    "vr": 95,
+    "vy": 110,
+    "vapp": 100,
+    "vcruise": 210
+  },
+  "cameras": {
+    "cockpit": [
+      -0.45,
+      0.55,
+      -3.3
+    ],
+    "chase": [
+      0,
+      4.5,
+      24
+    ]
+  },
+  "approachPower": 0.36
+}

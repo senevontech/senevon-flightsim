@@ -74,14 +74,37 @@
 | R2-06 | P1+ | Mayday: 7 scenarios (engine out free; 6 premium), failures in the sim, Mayday radio exchange, alert banner, dead instruments, cracked windscreen, "MAYDAY SURVIVED" | ✅ | 47 tests |
 | R2-08 | P1+ | HUD backgrounds removed: transparent top bar, strip and toasts; round gauges on a 2 % circular frosted disc; no backdrop saturation (it tinted panels blue) | ✅ | Owner feedback on R2-01 |
 | R2-09 | P1+ | Adaptive HUD contrast: frame brightness sampled behind each element 4×/s; dark marks over bright sky/runway, light over dark ground/sea, with hysteresis | ✅ | Owner: numbers unreadable on bright backgrounds |
+| R3-01 | P1+ | "Plane goes left" fixed: rigging (fin + wing incidence) for straight trimmed cruise; takeoff heading hold (Easy/Normal) | ✅ | Takeoff: 4.3° / 8 m → 0.0° / 0.2 m; Real cruise: 28° → < 10° bank in 60 s |
+| R3-02 | P1+ | Real-aircraft feel: propwash over the tail, control linkage rate, camber-raised stall limit, tail-strike protection, predictive stall guard, camera shake, model shows real surface positions | ✅ | |
+| R3-03 | P1+ | Autopilot rebuilt: HDG, ALT+VS, SPD autothrottle, NAV → APR (centreline + 3° glide path to minimums), panel with hold-repeat buttons, disconnect chime | ✅ | 6 autopilot tests |
+| R3-04 | P1+ | Time acceleration 1× / 2× / 4× / 6× (X or chip), above 500 ft only; auto back to 1× below | ✅ | Same physics steps, just more per frame |
+| R4-01 | P2 | Fleet: Kestrel K2 (aerobatic), Otter B4 (amphibian), Heron T2 (twin turboprop), Falcon J5 (twin jet), all tested in the sim against real-class numbers | ✅ | 104 tests |
+| R4-02 | P2 | Multi-engine (asymmetric thrust), turboprop + jet spool models, retractable gear (G, lights, horn, belly landing), floats + water ops + water start, per-type engine sound, overspeed warning | ✅ | |
+| R4-03 | P2 | Parametric aircraft models (swept/tapered wings, T-tail, nacelles, rear jets, floats, struts, liveries, hinged surfaces, retracting gear) + geometry tests | ✅ | Needs a visual check |
+| R4-04 | P2 | Hangar tab: switch aircraft live (remembered) | ✅ | Credits/token unlocks come with the economy (P3/P5) |
+| R5-01 | P1 | Graphics step 1: height haze with sun glow (aerial perspective), sky blended into the haze at the horizon, high cirrus layer tied to the weather | ✅ | `src/engine/haze.ts`, 3 tests |
+| R5-02 | P1 | Glare (bloom from the sun disc and glints only), HDR + 4× MSAA buffer, light lens curve; High quality only | ✅ | `src/engine/post.ts` |
+| R5-03 | P1 | Shadows: 250 m box around the aircraft growing with height, snapped to texels; trees/buildings cast on High; ambient light rebalanced (sun-less ambient map) so shade is visible | ✅ | Fixed a latent bug: shadow projection was never updated |
+| R5-04 | P1 | Ocean: sea-depth grid from a worker → clearer shallows, surf on beaches and reef edges, wind whitecaps, noise-broken swell (no glitter stripes) | ✅ | |
+| R5-05 | P1 | Ground: cliffs with strata, grass patches, beach ripples; tree colour fix (was ~3× too bright); beach band limited to the real shoreline; muted greens; brighter HDR cumulus | ✅ | |
+| R5-06 | P1 | Visual check harness: headless Chrome screenshots + console errors; `?quality=`, `?spawn=approach`, `?time=` URL options | ✅ | Visual checks no longer depend on the browser extension |
+| R6-01 | P1 | Phones showed a blank screen: the touch panel's class `touch` also matched `<body class="touch">`, so `.touch { display: none }` hid the whole page. Panel renamed `touch-ui` | ✅ | Found with phone emulation (`MOBILE=1 node tools/shot.mjs`) |
+| R6-02 | P1 | Responsive touch layout: landscape = one instrument strip on top (gauges, tape, map) with a clear centre; portrait = map row + gauge row; compact thumb buttons + throttle; round stick that springs back; GEAR only on retractable aircraft; wider camera view on tall screens; no more rotate overlay; menu uses dvh | ✅ | Checked at 844×390 and 390×844 |
+| R7-01 | P2 | GLB aircraft pipeline: per-aircraft spec (file, credit, licence), auto-fit to the flight model, moving parts by node name, prop blur, gear fold, coded model as instant fallback; coded parts now carry the standard node names | ✅ | Verified end to end with an exported test GLB (14 parts bound); 4 tests |
+| R7-02 | P2 | Pick open-licence (CC-BY) models for the five aircraft; owner downloads from Sketchfab (login needed) | 🟡 | Shortlist given 2026-11-24 |
+| R7-03 | P2 | Prepare each model in Blender (scripted): strip branding, split/rename parts, hinge origins, ≤ 25 k tris, Meshopt GLB; credit in docs/ASSETS.md + in-game | ⬜ | Blender 5.0 available locally |
+| R5-07 | P1 | Graphics step 1b: photo-based CC0 ground textures (needs the owner's OK to download asset packs) | ⬜ | |
+| R5-08 | P1 | Volumetric (ray-marched) cumulus on High: half-res march (≈0.5 MP) through a 1150–3400 m slab, weather map × height profile × 64³ Perlin-Worley noise, sun march + two-lobe phase + ambient, height haze per sample, stops at scene depth (log-depth decode), fly-through, wind drift, storm darkening; Low (phones) keeps the billboard puffs | ✅ | `src/engine/volumetricClouds.ts`, 5 tests; checked at noon / sunset / above / storm. Needs an fps check on a real desktop GPU (headless shots use software rendering) |
+| R5-09 | P1 | Roads, rivers, town street grids | ⬜ | |
+| R5-10 | P1 | Step 2: one real-world region (open elevation + Sentinel-2 imagery + OpenStreetMap) via WorldProvider | ⬜ | Owner to pick the region |
 | R2-07 | P5 | Token purchase for premium Maydays | ⛔ | Blocked on the Senevon connection (P5); items listed in SENEVON_INTEGRATION.md §7 |
-| P2-01 | P2 | Kestrel, Otter (wheels + floats), Heron configs + models | ⬜ | |
+| P2-01 | P2 | Kestrel, Otter (wheels + floats), Heron configs + models | ✅ | Plus the Falcon J5 (see R4-01) |
 | P2-02 | P2 | Cockpit instruments (canvas gauges) | ⬜ | |
 | P2-03 | P2 | Engine, wind and gear audio | ⬜ | |
 | P2-04 | P2 | Crash detection + crash sequence | ⬜ | |
-| P2-05 | P2 | Water physics (floats) | ⬜ | |
+| P2-05 | P2 | Water physics (floats) | ✅ | See R4-02 |
 | P2-06 | P2 | Free Flight mode + menu | ⬜ | |
-| P2-07 | P2 | Rewind 10 s | ⬜ | |
+| P2-07 | P2 | Rewind 10 s | ✅ | Done in R1 |
 | P3-01 | P3 | App state machine + menus (Preact) | ⬜ | |
 | P3-02 | P3 | Flight School: 5 lessons + check ride | ⬜ | |
 | P3-03 | P3 | Mission framework (objectives, triggers, briefing, results) | ⬜ | |
@@ -136,6 +159,15 @@
 | 2026-11-23 | Touch layout: instruments to the top corners, thumbs own the bottom; quality defaults to Battery saver on phones | Mobile-first usability and performance |
 | 2026-11-23 | Weather is free; Mayday scenarios are premium (one free) | Owner asked for token-purchasable Maydays; weather is a core setting |
 | 2026-11-23 | No fake purchases: locked items explain that tokens open with the Senevon connection; dev-only unlock switch for testing | Honest UX until P5 |
+| 2026-11-24 | All five aircraft flyable for free for now | No credits economy yet; unlock rules (details.md §8) apply once P3/P5 land |
+| 2026-11-24 | Autopilot hands over at 200 ft minimums instead of autolanding | The landing is the game's core skill and score |
+| 2026-11-24 | Time acceleration only above 500 ft AGL | Landings and takeoffs stay real-time and fairly scored |
+| 2026-11-24 | Aircraft models from open-licence sources (CC0 / CC-BY only), owner's choice; coded models stay as fallback | Owner wants open-source models; no NC/GPL/editorial licences for a token-selling game |
+| 2026-11-24 | Stay on three.js rather than move to Godot | Godot's web export only runs its simpler Compatibility renderer and would mean a rewrite; three.js add-ons give the same effects in the browser |
+| 2026-11-24 | Haze is height-based (scale height 1.1 km) and set by visibility (2.6 / visibility) | Mountain tops above the haze stay crisp; matches how real haze works |
+| 2026-11-24 | Glare and MSAA on High only; Low renders straight to screen | Mobile performance budget |
+| 2026-11-24 | Volumetric clouds on High only, rendered at ≈ 0.5 MP and laid over the frame before glare; Low keeps billboards | Ray marching is too heavy for the phone budget; a fixed pixel count keeps cost flat on 4K / high-DPR screens |
+| 2026-11-24 | Cloud march samples textures with explicit LOD | Implicit mip selection is undefined inside the divergent march loop and showed as striped clouds |
 | 2026-11-23 | Integrate like DroidDoom (external game, sign-in hand-off, `sw:` shop items); never edit 7games | Owner rule + existing pattern |
 
 ## Playtest log
@@ -153,6 +185,13 @@
 | 2026-11-23 | Controls rework (fly-by-wire assists, mouse flying, invert, key changes) |
 | 2026-11-23 | P1: Coral Coast procedural world (terrain streaming, ocean, clouds, scenery, 7 airports, time of day) |
 | 2026-11-23 | R1: realism pass, new HUD & instruments, moving map, menu, mobile controls, autopilot, rewind, cameras, radio |
+| 2026-11-24 | R5-08: volumetric clouds on High (116 tests) |
+| 2026-11-24 | Favicon + apple-touch-icon from `public/icon/snv-air-icon.png` (cropped square, 32/180/512 px) |
+| 2026-11-24 | R7: GLB aircraft model pipeline + open-licence shortlist |
+| 2026-11-24 | R6: phone blank-screen fix, responsive portrait + landscape touch layout |
+| 2026-11-24 | R5: realistic graphics step 1 (haze, glare, shadows, ocean surf, ground surfaces, colour fixes), screenshot harness (107 tests) |
+| 2026-11-24 | R4: four new aircraft with their systems, parametric models, hangar (104 tests) |
+| 2026-11-24 | R3: rigging + takeoff fix, real-aircraft control details, full autopilot, time acceleration (56 tests) |
 | 2026-11-24 | R2.2: adaptive (dynamic) HUD contrast |
 | 2026-11-24 | R2.1: transparent HUD, round 2 % frosted gauges |
 | 2026-11-23 | R2: glass HUD, taxi steering fix, mobile refinement, weather system, cloud/tree/building/farmland visuals, Mayday scenarios |

@@ -18,6 +18,21 @@ export interface MapResult {
   pixels: Uint8ClampedArray;
 }
 
+/** Sea depth grid for the ocean shader (surf, shallows): one byte per texel, 0.1 m steps, 0 on land. */
+export interface DepthRequest {
+  kind: "depth";
+  id: number;
+  size: number;
+  extent: number;
+}
+
+export interface DepthResult {
+  kind: "depth";
+  id: number;
+  size: number;
+  depth: Uint8Array;
+}
+
 export interface ChunkRequest {
   kind?: "chunk";
   id: number;
@@ -69,8 +84,23 @@ function buildMap(req: MapRequest): void {
   (self as unknown as Worker).postMessage(out, [px.buffer]);
 }
 
-self.onmessage = (e: MessageEvent<ChunkRequest | MapRequest>) => {
+function buildDepth(req: DepthRequest): void {
+  const { size, extent } = req;
+  const out = new Uint8Array(size * size);
+  const step = extent / size;
+  for (let j = 0; j < size; j++) {
+    for (let i = 0; i < size; i++) {
+      const h = region.height(-extent / 2 + (i + 0.5) * step, -extent / 2 + (j + 0.5) * step);
+      out[j * size + i] = h >= 0 ? 0 : Math.min(255, Math.max(1, Math.round(-h * 10)));
+    }
+  }
+  const res: DepthResult = { kind: "depth", id: req.id, size, depth: out };
+  (self as unknown as Worker).postMessage(res, [out.buffer]);
+}
+
+self.onmessage = (e: MessageEvent<ChunkRequest | MapRequest | DepthRequest>) => {
   if (e.data.kind === "map") return buildMap(e.data);
+  if (e.data.kind === "depth") return buildDepth(e.data);
   const { id, cx, cz, size, res } = e.data;
   const step = size / res;
   const x0 = cx - size / 2, z0 = cz - size / 2;

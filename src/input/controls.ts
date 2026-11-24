@@ -7,7 +7,7 @@ import { emptyControls, type Controls } from "../sim/types";
 
 export type Action =
   | "camera" | "reset" | "approach" | "pause" | "help" | "assists" | "flapsDown" | "flapsUp"
-  | "invert" | "mouse" | "nextAirport" | "time" | "autopilot" | "rewind" | "map" | "menu";
+  | "invert" | "mouse" | "nextAirport" | "time" | "autopilot" | "rewind" | "map" | "menu" | "simRate" | "gear";
 
 const AXIS_RATE = 3.2; // full stick in ~0.3 s
 const RETURN_RATE = 5; // back to centre in ~0.2 s
@@ -65,6 +65,16 @@ export class InputManager {
     this.raw.flaps = this.flapSteps[this.flapIndex];
   }
 
+  /** Switch aircraft: new flap detents (lever goes to the first). */
+  setFlapSteps(steps: number[]): void {
+    this.flapSteps = steps;
+    this.setFlapIndex(0);
+  }
+
+  setGear(down: boolean): void {
+    this.raw.gear = down ? 1 : 0;
+  }
+
   setThrottle(t: number): void {
     this.raw.throttle = clamp(t, 0, 1);
   }
@@ -106,6 +116,8 @@ export class InputManager {
           case "KeyN": this.emit("nextAirport"); break;
           case "KeyT": this.emit("time"); break;
           case "KeyJ": this.emit("autopilot"); break;
+          case "KeyX": this.emit("simRate"); break;
+          case "KeyG": this.raw.gear = this.raw.gear > 0.5 ? 0 : 1; this.emit("gear"); break;
           case "Backspace": this.emit("rewind"); break;
           case "Tab": this.emit("map"); break;
           case "KeyF": this.setFlapIndex(this.flapIndex + 1); this.emit("flapsDown"); break;

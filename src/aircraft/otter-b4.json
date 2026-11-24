@@ -1,0 +1,296 @@
+{
+  "id": "otter-b4",
+  "name": "Otter B4 Amphibian",
+  "description": "Rugged bush plane on amphibious floats. Big slotted flaps, a 300 kW radial, land on a runway or on the sea.",
+  "mass": 1650,
+  "fuelCapacity": 300,
+  "inertia": [
+    6500,
+    10000,
+    5500
+  ],
+  "damping": [
+    1500,
+    1200,
+    1000
+  ],
+  "fuselageCdA": 0.7,
+  "controlRate": 4.5,
+  "surfaces": [
+    {
+      "name": "wingL",
+      "kind": "horizontal",
+      "pos": [
+        -3.4,
+        1.3,
+        0.2
+      ],
+      "area": 11.6,
+      "aspect": 9.2,
+      "span": 14.6,
+      "incidence": 1.88,
+      "dihedral": 2,
+      "cl0": 0.25,
+      "clMax": 1.6,
+      "cd0": 0.01,
+      "e": 0.78,
+      "control": "aileronL",
+      "controlCL": 0.22,
+      "flap": true
+    },
+    {
+      "name": "wingR",
+      "kind": "horizontal",
+      "pos": [
+        3.4,
+        1.3,
+        0.2
+      ],
+      "area": 11.6,
+      "aspect": 9.2,
+      "span": 14.6,
+      "incidence": 2.12,
+      "dihedral": 2,
+      "cl0": 0.25,
+      "clMax": 1.6,
+      "cd0": 0.01,
+      "e": 0.78,
+      "control": "aileronR",
+      "controlCL": -0.22,
+      "flap": true
+    },
+    {
+      "name": "hstab",
+      "kind": "horizontal",
+      "pos": [
+        0,
+        0.4,
+        6.3
+      ],
+      "area": 5.0,
+      "aspect": 4.5,
+      "incidence": -2.0,
+      "cl0": 0,
+      "clMax": 1.2,
+      "clMin": -1.2,
+      "cd0": 0.01,
+      "e": 0.7,
+      "control": "elevator",
+      "controlCL": -0.9,
+      "trimCL": -0.35,
+      "downwash": 0.4,
+      "propwash": true
+    },
+    {
+      "name": "vfin",
+      "kind": "vertical",
+      "pos": [
+        0,
+        1.0,
+        6.5
+      ],
+      "area": 2.6,
+      "aspect": 1.6,
+      "incidence": 3.5,
+      "cl0": 0,
+      "clMax": 1.1,
+      "clMin": -1.1,
+      "cd0": 0.01,
+      "e": 0.6,
+      "control": "rudder",
+      "controlCL": 0.5,
+      "propwash": true
+    }
+  ],
+  "engine": {
+    "type": "piston",
+    "power": 300000,
+    "efficiency": 0.78,
+    "staticThrust": 4800,
+    "spoolTime": 0.8,
+    "idleRpm": 600,
+    "maxRpm": 2300,
+    "torqueFactor": 0.22,
+    "pFactor": 0.05,
+    "fuelBurn": 0.03,
+    "pos": [
+      0,
+      0.3,
+      -2.8
+    ]
+  },
+  "gear": [
+    {
+      "name": "noseL",
+      "pos": [
+        -1.4,
+        -1.4,
+        -2.2
+      ],
+      "length": 0.55,
+      "stiffness": 40000,
+      "damping": 6000,
+      "steer": 20,
+      "wheelRadius": 0.2
+    },
+    {
+      "name": "noseR",
+      "pos": [
+        1.4,
+        -1.4,
+        -2.2
+      ],
+      "length": 0.55,
+      "stiffness": 40000,
+      "damping": 6000,
+      "steer": 20,
+      "wheelRadius": 0.2
+    },
+    {
+      "name": "mainL",
+      "pos": [
+        -1.4,
+        -1.4,
+        0.4
+      ],
+      "length": 0.55,
+      "stiffness": 70000,
+      "damping": 9000,
+      "brakes": true,
+      "wheelRadius": 0.22
+    },
+    {
+      "name": "mainR",
+      "pos": [
+        1.4,
+        -1.4,
+        0.4
+      ],
+      "length": 0.55,
+      "stiffness": 70000,
+      "damping": 9000,
+      "brakes": true,
+      "wheelRadius": 0.22
+    },
+    {
+      "name": "floatFL",
+      "kind": "float",
+      "pos": [
+        -1.4,
+        -1.2,
+        -1.8
+      ],
+      "length": 0.6,
+      "stiffness": 22000,
+      "damping": 9000,
+      "wheelRadius": 0
+    },
+    {
+      "name": "floatFR",
+      "kind": "float",
+      "pos": [
+        1.4,
+        -1.2,
+        -1.8
+      ],
+      "length": 0.6,
+      "stiffness": 22000,
+      "damping": 9000,
+      "wheelRadius": 0
+    },
+    {
+      "name": "floatRL",
+      "kind": "float",
+      "pos": [
+        -1.4,
+        -1.2,
+        1.6
+      ],
+      "length": 0.6,
+      "stiffness": 22000,
+      "damping": 9000,
+      "steer": 15,
+      "wheelRadius": 0
+    },
+    {
+      "name": "floatRR",
+      "kind": "float",
+      "pos": [
+        1.4,
+        -1.2,
+        1.6
+      ],
+      "length": 0.6,
+      "stiffness": 22000,
+      "damping": 9000,
+      "steer": 15,
+      "wheelRadius": 0
+    }
+  ],
+  "crashPoints": [
+    [
+      -7.3,
+      1.3,
+      0.3
+    ],
+    [
+      7.3,
+      1.3,
+      0.3
+    ],
+    [
+      0,
+      -1.0,
+      -2.9
+    ],
+    [
+      0,
+      0.0,
+      6.8
+    ],
+    [
+      0,
+      2.0,
+      7.0
+    ]
+  ],
+  "flaps": {
+    "steps": [
+      0,
+      0.33,
+      0.67,
+      1
+    ],
+    "clMaxGain": 0.9,
+    "cl0Gain": 0.6,
+    "cdGain": 0.08,
+    "speed": 0.25,
+    "vfe": 100
+  },
+  "limits": {
+    "vne": 160,
+    "gMax": 3.8,
+    "gMin": -1.5
+  },
+  "speeds": {
+    "vs0": 44,
+    "vs1": 55,
+    "vr": 55,
+    "vy": 70,
+    "vapp": 65,
+    "vcruise": 125
+  },
+  "cameras": {
+    "cockpit": [
+      -0.35,
+      1.0,
+      -1.0
+    ],
+    "chase": [
+      0,
+      3.5,
+      16
+    ]
+  },
+  "approachPower": 0.42
+}

@@ -196,6 +196,14 @@ export class LandingMonitor {
     const c = best ? runwayCoords(best, mid.x, mid.z) : { along: 0, cross: 99 };
     let crab = sim.headingDeg - sim.trackDeg;
     crab = ((crab + 540) % 360) - 180;
+    // a floatplane touching down on the sea: no runway, judged on the touchdown itself
+    if (sim.hasFloats && sim.world.surfaceAt(mid.x, mid.z) === "water") {
+      this.runway = undefined;
+      return {
+        vsFpm: sim.prevVel.y / FPM, gPeak: sim.gLoad, centerline: 0, fromAim: 0,
+        bankDeg: sim.bankDeg, crabDeg: sim.groundSpeed > 3 ? crab : 0, bounced: false, onRunway: true,
+      };
+    }
     return {
       vsFpm: sim.prevVel.y / FPM,
       gPeak: sim.gLoad,

@@ -26,6 +26,7 @@ const CRASH_TEXT: Record<CrashReason, string> = {
   overstress: "The airframe was overstressed.",
   overspeed: "Too fast: the airframe broke up.",
   water: "Ditched in the sea. This plane has wheels, not floats.",
+  belly: "Belly landing: the gear was up.",
 };
 
 export interface HudInfo {
@@ -34,6 +35,8 @@ export interface HudInfo {
   best: number | null;
   autopilot: string | null;
   rewinds: number | null;
+  /** Red warning banner text (GEAR, OVERSPEED), or null. */
+  warning?: string | null;
 }
 
 const html = String.raw;
@@ -45,6 +48,8 @@ export class Hud {
   private calloutsDone = new Set<number>();
   private toastTimer = 0;
   private asi: AirspeedGauge;
+  private contrast: AdaptiveContrast | null = null;
+  private jet = false;
   private adi = new AttitudeGauge();
   private alt = new AltimeterGauge();
   private vsi = new VsiGauge();
@@ -56,6 +61,8 @@ export class Hud {
   readonly mapSlot: HTMLElement;
   /** Fired by the on-screen menu button. */
   onMenu: (() => void) | null = null;
+  /** Fired by the time-acceleration chip. */
+  onSimRate: (() => void) | null = null;
 
   constructor(root: HTMLElement, cfg: AircraftConfig) {
     this.el = root;
@@ -75,7 +82,8 @@ export class Hud {
       <div class="cluster right" data-k="cr"></div>
       <div class="strip">
         <div class="cell thr"><div class="vbar"><i data-k="thr"></i></div><div><label>THR</label><b data-k="thrv">0%</b></div></div>
-        <div class="cell"><label>RPM</label><b data-k="rpm">0</b></div>
+        <div class="cell"><label data-k="rpmlbl">RPM</label><b data-k="rpm">0</b></div>
+        <div class="cell gear-cell hidden" data-k="gearcell"><label>GEAR</label><div class="gearlights" data-k="gear"><i></i><i></i><i></i></div></div>
         <div class="cell fuel"><label>FUEL</label><div class="hbar"><i data-k="fuel"></i></div></div>
         <div class="cell"><label>FLAPS</label><div class="flaps" data-k="flaps"><i></i><i></i><i></i></div></div>
         <div class="cell trim"><label>TRIM</label><div class="trimbar"><i data-k="trim"></i></div></div>
@@ -90,9 +98,11 @@ export class Hud {
       <canvas class="crack hidden" data-k="crack"></canvas>
       <div class="mayday-banner hidden" data-k="mayday"></div>
       <div class="stall" data-k="stall">STALL</div>
+      <div class="stall warnbar" data-k="warn"></div>
       <div class="callout" data-k="callout"></div>
       <div class="toast" data-k="toast"></div>
       <div class="best-chip" data-k="bestwrap">BEST <b data-k="best">—</b></div>
+      <button class="rate-chip" data-k="rate" title="Time acceleration (X)">1×</button>
       <div class="card hidden" data-k="card"></div>
       <div class="overlay loading hidden" data-k="loading"><div class="card-inner"><h2>Loading the islands…</h2><div class="bar-h"><i data-k="loadbar"></i></div></div></div>
       <div class="overlay" data-k="help">
@@ -111,6 +121,7 @@ export class Hud {
             <div><kbd>F</kbd>/<kbd>V</kbd><span>Flaps</span></div>
             <div><kbd>B</kbd><span>Brakes</span></div>
             <div><kbd>J</kbd><span>Autopilot</span></div>
+            <div><kbd>X</kbd><span>Time 1×/2×/4×/6×</span></div>
             <div><kbd>⌫</kbd><span>Rewind 10 s</span></div>
             <div><kbd>C</kbd><span>Camera</span></div>
             <div><kbd>L</kbd><span>Final approach</span></div>
@@ -128,6 +139,7 @@ export class Hud {
     this.mapSlot = this.$("[data-k=mapSlot]");
     this.$("[data-k=help]").addEventListener("click", () => this.toggleHelp(false));
     this.$("[data-k=menuBtn]").addEventListener("click", () => this.onMenu?.());
+    this.$("[data-k=rate]").addEventListener("click", () => this.onSimRate?.());
   }
 
   private set(k: string, v: string): void {
@@ -200,9 +212,32 @@ export class Hud {
   /** Hook every HUD element that floats over the scene into adaptive contrast. The attitude
       indicator is left out: it carries its own sky/ground background. */
   registerContrast(ac: AdaptiveContrast): void {
+    this.contrast = ac;
     for (const g of [this.asi, this.alt, this.vsi, this.tape]) ac.register(g.canvas, (t) => g.setTone(t));
-    for (const k of ["menuBtn", "radio", "navwrap", "bestwrap", "toast", "callout"]) ac.register(this.$(`[data-k=${k}]`));
+    for (const k of ["menuBtn", "radio", "navwrap", "bestwrap", "toast", "callout", "rate"]) ac.register(this.$(`[data-k=${k}]`));
     ac.register(this.el.querySelector(".strip") as HTMLElement);
+  }
+
+  setSimRate(r: number): void {
+    const chip = this.$("[data-k=rate]");
+    chip.textContent = `${r}×`;
+    chip.classList.toggle("fast", r > 1);
+  }
+
+  /** Switch the HUD to another aircraft: airspeed scale and arcs, engine readout, gear lights. */
+  setAircraft(cfg: AircraftConfig): void {
+    const sp = cfg.speeds;
+    const max = Math.ceil((cfg.limits.vne * 1.15) / 40) * 40;
+    const asi = new AirspeedGauge(
+      { vs0: sp.vs0, vs1: sp.vs1, vfe: cfg.flaps.vfe, vno: Math.min(Math.round(sp.vcruise * 1.12), Math.round(cfg.limits.vne * 0.9)), vne: cfg.limits.vne },
+      max,
+    );
+    this.asi.canvas.replaceWith(asi.canvas);
+    this.asi = asi;
+    this.contrast?.register(asi.canvas, (t) => asi.setTone(t));
+    this.jet = (cfg.engines ?? [cfg.engine!])[0].type === "jet";
+    this.set("rpmlbl", this.jet ? "N1 %" : "RPM");
+    this.show("gearcell", !!cfg.retractable);
   }
 
   /** Big flashing alert when a Mayday failure happens. */
@@ -281,7 +316,13 @@ export class Hud {
     }
     this.$("[data-k=thr]").style.height = `${Math.round(c.throttle * 100)}%`;
     this.set("thrv", `${Math.round(c.throttle * 100)}%`);
-    this.set("rpm", String(Math.round(sim.rpm / 10) * 10));
+    this.set("rpm", this.jet ? sim.rpm.toFixed(0) : String(Math.round(sim.rpm / 10) * 10));
+    // gear: three greens when down and locked, red in transit, dark when up
+    const g = sim.gearDown;
+    this.$("[data-k=gear]").dataset.state = g > 0.98 ? "down" : g < 0.02 ? "up" : "transit";
+    const warn = info.warning ?? "";
+    this.set("warn", warn);
+    this.$("[data-k=warn]").classList.toggle("show", !!warn && !this.electrical);
     this.$("[data-k=fuel]").style.width = `${Math.round((sim.fuel / sim.cfg.fuelCapacity) * 100)}%`;
     const fl = Math.round(sim.flaps * 3);
     this.$("[data-k=flaps]").dataset.n = String(fl);

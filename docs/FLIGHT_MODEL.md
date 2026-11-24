@@ -101,6 +101,58 @@ and checks bank capture, levelling time, overshoot, pitch hold, altitude in turn
 flying (Y) uses the cursor's offset from the screen centre as the stick. Pitch can be inverted
 (I). All preferences are saved locally.
 
+## 7b. Real-aircraft details (added 2026-11-24)
+
+- **Rigging:** a 1.0° fin offset and 1.48° / 1.52° left/right wing incidence cancel engine torque
+  and P-factor in trimmed cruise. Measured hands-off at 75% power: under 10° of bank in 60 s.
+  At full or idle power the drift is larger and the pilot uses rudder, as in a real single.
+- **Propeller slipstream:** tail surfaces get extra airflow with power on (momentum theory, about
+  25% of the fully developed wash reaches the tail). The rudder and elevator work during the
+  takeoff roll and at low speed.
+- **Control linkage rate:** surfaces move at 5 full-travel/s toward the stick, and the 3D model
+  shows the real surface positions.
+- **Camber:** elevator, aileron, rudder and trim deflection raise the stall limit with the extra
+  lift, like a flap, so a deflected elevator doesn't stall the tail early.
+- **Takeoff:** in Easy/Normal, a heading hold on the ground counters the left pull and
+  tail-strike protection eases rotation before about 12° (tail strike geometry ~12.4°). In Real
+  mode you hold right rudder yourself.
+
+## 7c. Autopilot (`src/sim/autopilot.ts`)
+
+| Mode | What it does |
+|---|---|
+| HDG | Turns to and holds the selected heading (flies the ground track, max 25° bank) |
+| ALT + VS | Climbs/descends at the selected vertical speed to the selected altitude, then holds |
+| SPD (A/T) | Autothrottle holds the selected IAS; gives up descent rate if 12 kt fast |
+| NAV | Flies to a fix 6 km out on the nearest airport's into-wind runway, then switches to APR |
+| APR | Captures the centreline (damped, crosswind-trimmed, tightens near the runway) and the 3° glide path (from below, or descending from above), down to 200 ft minimums, then disconnects with a chime: you land it |
+
+Tested: altitude capture at 500 fpm, heading, NAV to a 6 km point, APR from 1.5 km offset above
+and below the path in a 12 kt crosswind (centreline < 12 m, path < 10 m at minimums), autothrottle.
+
+## 7d. The fleet (measured in the sim, `src/sim/__tests__/fleet.test.ts`)
+
+| Aircraft | Type | Cruise (75%) | Climb | Stall clean / flaps | Takeoff roll |
+|---|---|---|---|---|---|
+| Sparrow S1 | single piston trainer | 106 kt | 709 fpm | 51 / 44 kt | 373 m |
+| Kestrel K2 | aerobatic single, 220 kW, +8/−6 g | 165 kt | 2,600 fpm | 57 / 52 kt | 189 m |
+| Otter B4 | amphibian bush plane, 300 kW radial | 119 kt | 1,100 fpm | 54 / 45 kt | 322 m (water: < 900 m) |
+| Heron T2 | twin turboprop, retractable gear | 201 kt | 2,250 fpm | 82 / 66 kt | 449 m |
+| Falcon J5 | light twin jet, T-tail, swept wing | ≈ 260 kt at 35% thrust (overspeed above Vmo 290 kt at sea level) | 4,100 fpm | 103 / 84 kt | 801 m |
+
+Systems added for the fleet:
+- **Engines:** any number, each with its own position. Thrust off-centre yaws the aircraft
+  (asymmetric thrust on one engine). Spool-up: piston ~0.6 s, turboprop 3 s, jet 6 s (5% idle
+  thrust, lapse with density and speed). A failure hits the only engine or a twin's left engine.
+- **Retractable gear:** lever (G), transit time, drag area while down, three-light indicator,
+  warning horn when below 500 ft with the gear up and power back, belly-landing crash.
+- **Floats:** buoyant contact on water; hull drag with the plough "hump" near 15 kt and lower
+  drag on the step; keel grip; rear water rudders steer with the pedals. Wheels on an amphibian
+  stay dry on water; a wheels-only plane on water ditches. Water landings are scored.
+- **Agility:** per-aircraft multipliers on the assists' roll/pitch rates (the Kestrel rolls 2.2×).
+- **Rigging per aircraft** (fin offset, wing incidence, dihedral) found by search so trimmed
+  cruise is close to hands-off straight (< 15° bank in 60 s for every type).
+
 ## 8. Aircraft config (data, not code)
 
 Every aircraft is described by a JSON file in `src/aircraft/<id>.json`:

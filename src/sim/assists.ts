@@ -52,6 +52,10 @@ export class Assists {
   private pitchHold: number | null = null;
   private bankHold = 0;
   private wasAir = false;
+  /** Heading held on the ground when the pilot isn't steering (Easy / Normal). */
+  private groundHeading: number | null = null;
+  private lastAoa = 0;
+  private aoaRate = 0;
 
   get flags(): AssistFlags {
     return PRESETS[this.preset];
@@ -63,6 +67,7 @@ export class Assists {
     this.pitchHold = null;
     this.bankHold = 0;
     this.wasAir = false;
+    this.groundHeading = null;
   }
 
   /** Raw pilot input → controls sent to the aircraft. */
@@ -87,6 +92,15 @@ export class Assists {
       out.pitch = curve(raw.pitch, 1.3);
       out.roll = raw.roll * 0.5;
       out.yaw = groundSteer(raw.yaw);
+      // hands off the steering: hold the heading, like a pilot's feet countering the
+      // propeller's pull to the left on the takeoff roll
+      if (Math.abs(out.yaw) < 0.05 && sim.groundSpeed > 1) {
+        if (this.groundHeading === null) this.groundHeading = sim.headingDeg;
+        const err = ((this.groundHeading - sim.headingDeg + 540) % 360) - 180;
+        out.yaw = clamp(err * 0.25 + sim.w.y * 1.5);
+      } else this.groundHeading = null;
+      // tail-strike protection: ease the rotation off before the tail touches (~12°)
+      out.pitch = Math.min(out.pitch, clamp((10 - sim.pitchDeg) * 0.12 - (sim.w.x - 4 * DEG) * 2));
       this.iPitch = out.pitch;
       this.iRoll = 0;
       this.pitchHold = null;
@@ -101,6 +115,9 @@ export class Assists {
       this.wasAir = true;
     }
 
+    this.aoaRate += ((sim.wingAoa - this.lastAoa) / dt - this.aoaRate) * Math.min(1, dt * 8);
+    this.lastAoa = sim.wingAoa;
+    const agility = sim.cfg.agility ?? { roll: 1, pitch: 1 };
     const V = Math.max(sim.tas, 15);
     const gain = clamp((V_REF / V) ** 2, 0.35, 3);
     const bank = sim.bankDeg;
@@ -111,7 +128,7 @@ export class Assists {
     const qTurn = (G / V) * Math.tan(phi) * Math.sin(phi);
     let qCmd: number; // rad/s
     if (Math.abs(raw.pitch) > 0.03) {
-      qCmd = curve(raw.pitch, 1.3) * f.maxPitchRate * DEG + qTurn;
+      qCmd = curve(raw.pitch, 1.3) * f.maxPitchRate * agility.pitch * DEG + qTurn;
       this.pitchHold = sim.pitchDeg;
     } else {
       if (this.pitchHold === null) this.pitchHold = sim.pitchDeg;
@@ -127,7 +144,9 @@ export class Assists {
     // stall protection: cap nose-up command near the critical angle of attack
     if (f.stallProtection !== "off") {
       const margin = (f.stallProtection === "hard" ? 3 : 1) * DEG;
-      const excess = sim.wingAoa - (this.stallAoa(sim) - margin);
+      // look ahead: where the angle of attack will be in ~0.6 s at its current rate
+      const predicted = sim.wingAoa + Math.max(0, this.aoaRate) * 0.6;
+      const excess = predicted - (this.stallAoa(sim) - margin);
       if (excess > 0) {
         const cap = clamp(this.iPitch - excess / (2 * DEG));
         if (out.pitch > cap) {
@@ -143,12 +162,12 @@ export class Assists {
     if (f.roll === "level") {
       const input = Math.abs(raw.roll) > 0.03;
       const target = input ? curve(raw.roll, 1.2) * f.maxBank : 0;
-      pCmd = clamp((target - bank) * 2.3, -f.maxRollRate, f.maxRollRate);
+      pCmd = clamp((target - bank) * 2.3, -f.maxRollRate * agility.roll, f.maxRollRate * agility.roll);
       // the aileron held during the bank is no longer needed once levelling: bleed it off
       if (!input) this.iRoll *= Math.max(0, 1 - dt * 3);
     } else {
       if (Math.abs(raw.roll) > 0.03) {
-        pCmd = curve(raw.roll, 1.3) * f.maxRollRate;
+        pCmd = curve(raw.roll, 1.3) * f.maxRollRate * agility.roll;
         this.bankHold = bank;
       } else {
         // shallow banks drift back to level; steeper ones are held

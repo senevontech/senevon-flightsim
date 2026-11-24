@@ -7,6 +7,8 @@ import { emptyControls, FPM, KT } from "../types";
 import { AIRCRAFT } from "../../aircraft";
 import { FlatWorld, HOME } from "../../world/flat/FlatWorld";
 
+declare const process: { env: Record<string, string | undefined>; stderr: { write(s: string): void } };
+
 const perfect: TouchdownSample = {
   vsFpm: -120, gPeak: 1.1, centerline: 0.3, fromAim: 10, bankDeg: 0.5, crabDeg: 1, bounced: false, onRunway: true,
 };
@@ -64,10 +66,13 @@ describe("landing detector (end to end)", () => {
     const c = emptyControls();
     c.flaps = 0.67;
     for (let i = 0; i < 120 * 90 && !result; i++) {
-      // descend at ~350 fpm, flare to ~100 fpm near the ground, idle once in the flare
+      // APR (centreline + 3° glide path, autothrottle 65 kt) down to ~6 m, then a pilot-style
+      // flare: hold the centreline, ~100 fpm sink, idle
       const flare = sim.agl < 6;
-      ap.targets = { vs: (flare ? -100 : -350) * FPM, heading: 0 };
-      c.throttle = flare ? 0 : 0.3;
+      ap.targets = flare
+        ? { vs: -100 * FPM, lateral: "apr", vertical: "vs", runway: rwy }
+        : { lateral: "apr", vertical: "gs", runway: rwy, ias: 65, autothrottle: true };
+      if (flare) c.throttle = 0;
       if (sim.onGround) {
         c.pitch = 0;
         c.brakes = 0.5;
@@ -77,6 +82,7 @@ describe("landing detector (end to end)", () => {
     }
     expect(result).not.toBeNull();
     const r = result as unknown as LandingResult;
+    if (process.env.FLIGHT_LOG) process.stderr.write(JSON.stringify(r.sample) + "\n");
     expect(r.grade).not.toBe("CRASH");
     expect(r.sample.onRunway).toBe(true);
     expect(r.score).toBeGreaterThan(500);

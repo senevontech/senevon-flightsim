@@ -9,6 +9,9 @@ export class FlightAudio {
   private engB!: OscillatorNode;
   private engGain!: GainNode;
   private engFilter!: BiquadFilterNode;
+  /** Turbine whine (turboprops and jets). */
+  private whine!: OscillatorNode;
+  private whineGain!: GainNode;
   private windGain!: GainNode;
   private windFilter!: BiquadFilterNode;
   private horn!: GainNode;
@@ -64,6 +67,12 @@ export class FlightAudio {
       this.engFilter.connect(this.engGain).connect(this.master);
       this.engA.start();
       this.engB.start();
+      this.whine = ctx.createOscillator();
+      this.whine.type = "sine";
+      this.whineGain = ctx.createGain();
+      this.whineGain.gain.value = 0;
+      this.whine.connect(this.whineGain).connect(this.master);
+      this.whine.start();
 
       this.noise = this.noiseBuffer(ctx);
       const noise = ctx.createBufferSource();
@@ -121,6 +130,27 @@ export class FlightAudio {
     o.stop(ctx.currentTime + 0.25);
   }
 
+  /** Autopilot-disconnect alert: three falling two-tone chirps. */
+  chime(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.muted) return;
+    for (let k = 0; k < 3; k++) {
+      const t0 = ctx.currentTime + k * 0.32;
+      for (const [f, dt] of [[1250, 0], [940, 0.13]] as const) {
+        const o = ctx.createOscillator();
+        o.type = "triangle";
+        o.frequency.value = f;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t0 + dt);
+        g.gain.exponentialRampToValueAtTime(0.12, t0 + dt + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.12);
+        o.connect(g).connect(this.master);
+        o.start(t0 + dt);
+        o.stop(t0 + dt + 0.14);
+      }
+    }
+  }
+
   /** Rolling thunder after `delay` seconds. */
   thunder(delay: number): void {
     const ctx = this.ctx;
@@ -147,12 +177,30 @@ export class FlightAudio {
     const t = ctx.currentTime;
     const on = !paused && !this.muted && !sim.crashed;
     this.master.gain.setTargetAtTime(on ? 0.5 : 0, t, 0.1);
-    // 4-cylinder: 2 firing pulses per revolution
-    const fire = (sim.rpm / 60) * 2;
-    this.engA.frequency.setTargetAtTime(Math.max(fire, 8), t, 0.05);
-    this.engB.frequency.setTargetAtTime(Math.max(fire * 0.5, 4), t, 0.05);
-    this.engFilter.frequency.setTargetAtTime((interior ? 260 : 420) + sim.rpm * 0.25, t, 0.05);
-    this.engGain.gain.setTargetAtTime(sim.rpm > 100 ? 0.12 + 0.18 * (sim.rpm / 2700) : 0, t, 0.1);
+    const e = sim.engines[0];
+    const spool = sim.spool.reduce((a, b) => a + b, 0) / Math.max(1, sim.spool.length);
+    const running = sim.rpm > (e.type === "jet" ? 5 : 100);
+    if (e.type === "jet") {
+      // turbofan: low rumble + a turbine whine that climbs with the spool
+      this.engA.frequency.setTargetAtTime(38 + 50 * spool, t, 0.2);
+      this.engB.frequency.setTargetAtTime(27 + 35 * spool, t, 0.2);
+      this.engFilter.frequency.setTargetAtTime((interior ? 160 : 260) + 260 * spool, t, 0.2);
+      this.engGain.gain.setTargetAtTime(running ? 0.1 + 0.2 * spool : 0, t, 0.3);
+      this.whine.frequency.setTargetAtTime(1600 + 3600 * Math.pow(spool, 0.8), t, 0.3);
+      this.whineGain.gain.setTargetAtTime(running ? (interior ? 0.012 : 0.03) * (0.5 + spool) : 0, t, 0.3);
+    } else {
+      // pistons: firing pulses (4-cyl: 2 per rev; big radials sound deeper);
+      // turboprops: blade-pass buzz plus the turbine whine
+      const pulses = e.type === "turboprop" ? 4 : e.power > 250000 ? 4.5 : 2;
+      const fire = (sim.rpm / 60) * pulses;
+      this.engA.frequency.setTargetAtTime(Math.max(fire, 8), t, 0.05);
+      this.engB.frequency.setTargetAtTime(Math.max(fire * 0.5, 4), t, 0.05);
+      this.engFilter.frequency.setTargetAtTime((interior ? 260 : 420) + (sim.rpm / e.maxRpm) * 680, t, 0.05);
+      this.engGain.gain.setTargetAtTime(running ? 0.12 + 0.18 * (sim.rpm / e.maxRpm) : 0, t, 0.1);
+      const turbine = e.type === "turboprop";
+      this.whine.frequency.setTargetAtTime(2200 + 2600 * spool, t, 0.3);
+      this.whineGain.gain.setTargetAtTime(turbine && running ? (interior ? 0.01 : 0.022) * (0.6 + spool) : 0, t, 0.3);
+    }
     const v = sim.tas;
     this.windGain.gain.setTargetAtTime(Math.min(0.5, (v * v) / 9000) * (interior ? 0.5 : 1), t, 0.1);
     this.windFilter.frequency.setTargetAtTime(300 + v * 18, t, 0.1);

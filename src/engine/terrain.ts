@@ -63,11 +63,11 @@ export class Terrain {
     this.material = new MeshStandardMaterial({ vertexColors: true, map: detail, roughness: 0.95, metalness: 0 });
     this.material.onBeforeCompile = (sh) => {
       sh.uniforms.fieldsMap = { value: fields };
-      sh.vertexShader = "varying float vWorldY;\n" + sh.vertexShader.replace(
+      sh.vertexShader = "varying vec3 vWorldPos;\n" + sh.vertexShader.replace(
         "#include <project_vertex>",
-        "#include <project_vertex>\nvWorldY = (modelMatrix * vec4(transformed, 1.0)).y;",
+        "#include <project_vertex>\nvWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;",
       );
-      sh.fragmentShader = "uniform sampler2D fieldsMap;\nvarying float vWorldY;\n" + sh.fragmentShader
+      sh.fragmentShader = "uniform sampler2D fieldsMap;\nvarying vec3 vWorldPos;\n#define vWorldY vWorldPos.y\n" + sh.fragmentShader
         // colour: fine grain near the camera, medium patches, and large-scale variation everywhere
         .replace(
           "#include <map_fragment>",
@@ -91,6 +91,28 @@ export class Terrain {
              float greenish = smoothstep(0.0, 0.03, diffuseColor.g - diffuseColor.r * 1.08);
              float district = smoothstep(0.5, 0.6, d3);
              diffuseColor.rgb = mix(diffuseColor.rgb, fc * 0.8, lowland * greenish * district * 0.75);
+           }
+           // ---- surface types: cliffs, grass patches, beach sand ----
+           {
+             vec3 wn = normalize((vec4(vNormal, 0.0) * viewMatrix).xyz);
+             float rockMask = smoothstep(0.14, 0.3, 1.0 - wn.y) + smoothstep(520.0, 720.0, vWorldY);
+             rockMask = clamp(rockMask, 0.0, 1.0);
+             // rock texture projected on the vertical faces (no stretching on cliffs), plus strata
+             vec2 aw = abs(wn.xz) / (abs(wn.x) + abs(wn.z) + 0.0001);
+             float rk = texture2D(map, vWorldPos.zy * 0.029).r * aw.x + texture2D(map, vWorldPos.xy * 0.029).r * aw.y;
+             float rk2 = texture2D(map, vWorldPos.zy * 0.11).r * aw.x + texture2D(map, vWorldPos.xy * 0.11).r * aw.y;
+             float strata = 0.84 + 0.16 * sin(vWorldPos.y * 0.38 + rk * 6.0);
+             diffuseColor.rgb *= mix(1.0, strata * (0.45 + rk * 0.75) * (0.7 + rk2 * 0.55), rockMask * 0.85);
+             // grass: sun-dried and lush patches at two scales
+             float grassy = smoothstep(0.0, 0.04, diffuseColor.g - diffuseColor.r * 1.05) * (1.0 - rockMask);
+             float pa = texture2D(map, vMapUv * 0.055).r;
+             float pb = texture2D(map, vMapUv * 0.37 + 0.3).r;
+             diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.2, 1.1, 0.68), smoothstep(0.55, 0.78, pa) * grassy * 0.55);
+             diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.78, 0.9, 0.8), smoothstep(0.5, 0.25, pb) * grassy * 0.45 * midFade);
+             // beach: wind ripples close up
+             float beach = (1.0 - smoothstep(0.8, 2.2, vWorldY)) * (1.0 - rockMask) * step(0.0, vWorldY);
+             float ripple = 0.92 + 0.08 * sin(dot(vWorldPos.xz, vec2(0.83, 0.55)) * 2.2 + rk2 * 5.0);
+             diffuseColor.rgb *= mix(1.0, ripple, beach * nearFade);
            }
            diffuseColor.rgb *= detailMul;`,
         )

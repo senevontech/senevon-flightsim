@@ -24,7 +24,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1116; col
   font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
 canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; -webkit-user-select: none; text-shadow: var(--shadow-text); }
-#hud button, .touch, .menu-overlay, .minimap { pointer-events: auto; }
+#hud button, .touch-ui, .menu-overlay, .minimap { pointer-events: auto; }
 button { font: inherit; color: inherit; cursor: pointer; }
 .hidden { display: none !important; }
 .dim { color: var(--dim); }
@@ -117,7 +117,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .overlay { background: rgba(5, 8, 12, 0.45); pointer-events: auto; backdrop-filter: blur(4px); }
 .card { pointer-events: none; }
 .card-inner { background: var(--solid); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost); border-radius: var(--r); padding: 22px 24px;
-  pointer-events: auto; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  pointer-events: auto; width: min(520px, 100%); max-height: calc(100dvh - 32px); overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
   border: 1px solid var(--glass-border); text-shadow: none; }
 .card-inner h2 { margin: 0 0 12px; font-size: 20px; }
 .keys { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin-bottom: 12px; }
@@ -150,7 +150,7 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: v
 
 /* ---------- menu ---------- */
 .menu-overlay { position: fixed; inset: 0; background: rgba(5, 8, 12, 0.35); backdrop-filter: blur(6px); display: grid; place-items: center; padding: 16px; z-index: 10; }
-.menu { width: min(580px, 100%); max-height: calc(100vh - 32px); background: rgba(16, 19, 25, 0.72); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost);
+.menu { width: min(580px, 100%); max-height: calc(100dvh - 32px); background: rgba(16, 19, 25, 0.72); backdrop-filter: var(--frost); -webkit-backdrop-filter: var(--frost);
   border-radius: var(--r); border: 1px solid var(--glass-border); display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
 .menu-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 8px; }
 .menu-head h2 { margin: 0; font-size: 18px; letter-spacing: 0.04em; }
@@ -185,7 +185,7 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: v
 .slider input { width: 100%; accent-color: var(--accent); }
 
 /* ---------- touch controls ---------- */
-.touch { display: none; }
+.touch-ui { display: none; }
 .tc-stick-zone { position: fixed; left: 0; bottom: 0; width: 46vw; height: 64vh; touch-action: none; }
 .tc-stick { position: absolute; left: 120px; top: calc(64vh - 128px); width: 148px; height: 148px; transform: translate(-50%, -50%); opacity: 0.6; transition: opacity 0.15s; }
 .tc-stick::before, .tc-stick::after { content: ""; position: absolute; background: rgba(255,255,255,0.2); }
@@ -207,7 +207,7 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: v
 .tc-thr-ticks { position: absolute; inset: 0; background: repeating-linear-gradient(to top, transparent 0 calc(25% - 1px), rgba(255,255,255,0.2) calc(25% - 1px) 25%); pointer-events: none; }
 
 /* touch layout: thumbs own the bottom, instruments go to the top corners */
-body.touch .touch { display: block; }
+body.touch .touch-ui { display: block; }
 body.touch .help-touch { display: block; }
 body.touch .help-keys { display: none; }
 body.touch { --gauge: clamp(72px, 10vw, 104px); }
@@ -230,10 +230,7 @@ body.touch .toast { top: auto; bottom: calc(206px + var(--sab)); }
   .best-chip { display: none; }
 }
 .rotate-hint { display: none; }
-@media (orientation: portrait) and (max-width: 600px) {
-  body.touch .rotate-hint { display: grid; position: fixed; inset: 0; place-items: center; background: rgba(5,8,12,0.85); z-index: 20;
-    text-align: center; padding: 24px; font-weight: 600; pointer-events: auto; }
-}
+/* portrait is fully supported now (see the touch layout below), so no "rotate your phone" overlay */
 
 /* ---------- transparent HUD ----------
    Top bar (menu, radio, heading tape, airport pointer, best score, map frame), bottom strip and
@@ -278,3 +275,93 @@ body.touch .toast { top: auto; bottom: calc(206px + var(--sab)); }
 [data-tone="dark"] .vbar, [data-tone="dark"] .hbar, [data-tone="dark"] .trimbar, [data-tone="dark"] .flaps i { background-color: rgba(14, 18, 24, 0.2); }
 [data-tone="dark"] .flaps[data-n="1"] i:nth-child(-n+1), [data-tone="dark"] .flaps[data-n="2"] i:nth-child(-n+2), [data-tone="dark"] .flaps[data-n="3"] i { background: #0e1218; }
 .gauge { transition: filter 0.35s; }
+
+/* ---------- autopilot panel ---------- */
+.ap-panel { position: absolute; left: 50%; bottom: calc(86px + var(--sab)); transform: translateX(-50%); pointer-events: auto;
+  display: grid; gap: 4px; justify-items: center; color: #fff; text-shadow: var(--shadow-text); }
+.ap-ann { display: flex; gap: 10px; font-size: 12px; font-weight: 800; letter-spacing: 0.12em; }
+.ap-mode { color: #5be37f; }
+.ap-mode.armed { color: #ffffff; opacity: 0.8; }
+.ap-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center;
+  background: rgba(255,255,255,0.02); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.16); border-radius: var(--r); padding: 6px 8px; }
+.ap-group { display: flex; align-items: center; gap: 3px; padding: 0 4px; border-left: 1px solid rgba(255,255,255,0.14); }
+.ap-group b { min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; font-size: 13px; }
+.ap-lbl { font-size: 10px; letter-spacing: 0.1em; color: rgba(255,255,255,0.75); padding: 0 4px; }
+.ap-btn, .ap-step { border: 1px solid rgba(255,255,255,0.28); background: transparent; border-radius: var(--r); font-weight: 800; touch-action: manipulation;
+  text-shadow: var(--shadow-text); }
+.ap-btn { font-size: 11px; letter-spacing: 0.08em; padding: 5px 8px; }
+.ap-btn.on { background: rgba(52,199,89,0.28); border-color: #5be37f; color: #c9ffd8; }
+.ap-step { width: 26px; height: 26px; font-size: 15px; line-height: 1; }
+.ap-btn:active, .ap-step:active { background: rgba(255,122,26,0.4); }
+.rate-chip { position: absolute; top: calc(12px + var(--sat)); right: calc(12px + var(--sar) + 290px); background: transparent; border: 1px solid rgba(255,255,255,0.3);
+  border-radius: var(--r); padding: 3px 9px; font-weight: 800; font-size: 12px; pointer-events: auto; }
+.rate-chip.fast { border-color: var(--accent); color: var(--accent); }
+body.touch .rate-chip { top: auto; right: auto; left: calc(10px + var(--sal)); bottom: calc(206px + var(--sab)); padding: 8px 12px; }
+body.touch .ap-panel { bottom: auto; top: calc(170px + var(--sat)); }
+body.touch .ap-step { width: 34px; height: 34px; }
+@media (max-width: 760px) { .rate-chip { right: calc(12px + var(--sar) + 212px); } }
+
+/* ---------- gear lights + warning bar ---------- */
+.gearlights { display: flex; gap: 3px; }
+.gearlights i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.15); }
+.gearlights[data-state="down"] i { background: #34c759; box-shadow: 0 0 6px #34c759; }
+.gearlights[data-state="transit"] i { background: #ff3b30; box-shadow: 0 0 6px #ff3b30; }
+.warnbar { top: calc(24% + 46px); }
+.row-btn.plane small.stats { color: #ffd34d; margin-top: 2px; }
+.water-btn { margin-top: 8px; }
+
+/* ---------- phones & tablets (touch) ----------
+   Landscape: one instrument strip along the top (menu · speed + attitude · heading tape ·
+   altimeter + VSI · map); the middle of the screen stays clear; the thumbs own the bottom
+   corners (stick left, buttons + throttle right).
+   Portrait: menu · tape · map on the first row, the four gauges on the second. */
+body.touch {
+  --gauge: clamp(60px, min(10vw, 22vh), 96px);
+  --map: clamp(76px, min(13vw, 26vh), 120px);
+}
+body.touch .hud-tl { top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); }
+body.touch .cluster { top: calc(10px + var(--sat)); bottom: auto; gap: 6px; }
+body.touch .cluster.left { left: calc(10px + var(--sal) + 50px); }
+body.touch .cluster.right { right: calc(10px + var(--sar) + var(--map) + 8px); }
+body.touch .hud-tr { top: calc(10px + var(--sat)); bottom: auto; right: calc(10px + var(--sar)); }
+body.touch .minimap { width: var(--map); height: var(--map); }
+body.touch .minimap.expanded { width: min(320px, 46vw); height: min(280px, 72vh); }
+body.touch .hud-top { top: calc(8px + var(--sat)); }
+body.touch .tape-slot .gauge { width: clamp(120px, calc(100vw - 84px - 2 * var(--map) - 4 * var(--gauge)), 300px); height: 30px; }
+body.touch .nav { font-size: 11.5px; }
+body.touch .radio { top: calc(var(--gauge) + 20px + var(--sat)); max-width: 52vw; }
+body.touch .rate-chip { top: calc(60px + var(--sat)); left: calc(10px + var(--sal)); right: auto; bottom: auto; width: 42px; padding: 6px 0; text-align: center; }
+body.touch .ap-panel { top: calc(var(--gauge) + 60px + var(--sat)); bottom: auto; }
+body.touch .toast { bottom: auto; top: calc(var(--gauge) + 64px + var(--sat)); }
+
+/* stick: invisible zone, faint round base that follows the thumb */
+.tc-stick-zone { width: 50vw; height: 68vh; }
+.tc-stick { width: 132px; height: 132px; border-radius: 50%; background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.28); opacity: 0.5;
+  left: calc(84px + var(--sal)); top: calc(100% - 84px - var(--sab)); }
+.tc-stick.active { opacity: 0.95; }
+
+/* right thumb: compact buttons + throttle */
+.tc-right { gap: 8px; }
+.tc-buttons { grid-template-columns: repeat(2, 54px); gap: 6px; align-content: end; }
+.tc-buttons button { height: 42px; padding: 0; white-space: nowrap; font-size: 11px; letter-spacing: 0.04em; border-radius: 6px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.26);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.tc-buttons button.wide { grid-column: span 2; }
+.tc-throttle { width: 52px; height: clamp(140px, 50vh, 210px); border-radius: 6px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.26); }
+
+@media (orientation: portrait) {
+  body.touch { --gauge: clamp(60px, 19vw, 90px); --map: clamp(70px, 21vw, 104px); }
+  body.touch .cluster { top: calc(18px + var(--sat) + var(--map)); }
+  body.touch .cluster.left { left: calc(10px + var(--sal)); }
+  body.touch .cluster.right { right: calc(10px + var(--sar)); }
+  body.touch .tape-slot .gauge { width: calc(100vw - 36px - 2 * var(--map)); }
+  body.touch .radio { top: calc(var(--map) + var(--gauge) + 30px + var(--sat)); max-width: 86vw; }
+  body.touch .ap-panel { top: calc(var(--map) + var(--gauge) + 74px + var(--sat)); }
+  body.touch .toast { top: calc(var(--map) + var(--gauge) + 78px + var(--sat)); }
+  body.touch .rate-chip { top: calc(var(--map) + var(--gauge) + 28px + var(--sat)); }
+  .tc-stick-zone { height: 46vh; }
+  .tc-throttle { height: clamp(150px, 30vh, 230px); }
+}

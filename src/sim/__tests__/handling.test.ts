@@ -153,3 +153,30 @@ describe("TAXI handling", () => {
     expect(Math.abs(taxi("easy", {}, 8))).toBeLessThan(3);
   });
 });
+
+describe("no unwanted pull (rigging + takeoff heading hold)", () => {
+  for (const preset of ["easy", "normal"] as const) {
+    it(`${preset}: a hands-off full-power takeoff roll stays on the centreline`, () => {
+      const sim = new AircraftSim(AIRCRAFT["sparrow-s1"], new FlatWorld());
+      sim.reset({ pos: new Vector3(0, sim.restHeight, 0), headingDeg: 0, speed: 0 });
+      const a = new Assists();
+      a.preset = preset;
+      const raw = emptyControls();
+      const out = emptyControls();
+      raw.throttle = 1;
+      for (let i = 0; i < 120 * 15 && sim.ias < 50 * KT; i++) { a.apply(raw, sim, SIM_DT, out); sim.step(SIM_DT, out); }
+      expect(Math.abs(((sim.headingDeg + 540) % 360) - 180)).toBeLessThan(1.5);
+      expect(Math.abs(sim.pos.x)).toBeLessThan(2);
+    });
+  }
+
+  it("real: trimmed cruise flies nearly straight hands-off for a minute", () => {
+    const sim = new AircraftSim(AIRCRAFT["sparrow-s1"], new FlatWorld());
+    sim.reset({ pos: new Vector3(0, 800, 0), headingDeg: 0, speed: 100 * KT, pitchDeg: 1 });
+    const c = emptyControls();
+    c.throttle = 0.75;
+    let maxBank = 0;
+    for (let i = 0; i < 120 * 60; i++) { sim.step(SIM_DT, c); maxBank = Math.max(maxBank, Math.abs(sim.bankDeg)); }
+    expect(maxBank).toBeLessThan(10);
+  });
+});

@@ -1,0 +1,256 @@
+{
+  "id": "falcon-j5",
+  "name": "Falcon J5",
+  "description": "Light business jet. Swept wing, T-tail, 2 \u00d7 13 kN turbofans that take seconds to spool. Fast, heavy, and it needs managing.",
+  "mass": 6200,
+  "fuelCapacity": 1800,
+  "inertia": [
+    45000,
+    70000,
+    25000
+  ],
+  "damping": [
+    8000,
+    6000,
+    4000
+  ],
+  "fuselageCdA": 0.28,
+  "controlRate": 3.5,
+  "retractable": {
+    "time": 7,
+    "dragArea": 0.45
+  },
+  "surfaces": [
+    {
+      "name": "wingL",
+      "kind": "horizontal",
+      "pos": [
+        -3.6,
+        -0.7,
+        0.5
+      ],
+      "area": 14.0,
+      "aspect": 8.9,
+      "span": 15.8,
+      "incidence": 2.0,
+      "dihedral": 3,
+      "cl0": 0.2,
+      "clMax": 1.5,
+      "cd0": 0.008,
+      "e": 0.8,
+      "control": "aileronL",
+      "controlCL": 0.18,
+      "flap": true
+    },
+    {
+      "name": "wingR",
+      "kind": "horizontal",
+      "pos": [
+        3.6,
+        -0.7,
+        0.5
+      ],
+      "area": 14.0,
+      "aspect": 8.9,
+      "span": 15.8,
+      "incidence": 2.0,
+      "dihedral": 3,
+      "cl0": 0.2,
+      "clMax": 1.5,
+      "cd0": 0.008,
+      "e": 0.8,
+      "control": "aileronR",
+      "controlCL": -0.18,
+      "flap": true
+    },
+    {
+      "name": "hstab",
+      "kind": "horizontal",
+      "pos": [
+        0,
+        2.3,
+        7.0
+      ],
+      "area": 6.0,
+      "aspect": 4.5,
+      "incidence": -2.5,
+      "cl0": 0,
+      "clMax": 1.2,
+      "clMin": -1.2,
+      "cd0": 0.01,
+      "e": 0.7,
+      "control": "elevator",
+      "controlCL": -1.0,
+      "trimCL": -0.35,
+      "downwash": 0.35
+    },
+    {
+      "name": "vfin",
+      "kind": "vertical",
+      "pos": [
+        0,
+        1.3,
+        6.6
+      ],
+      "area": 4.0,
+      "aspect": 1.4,
+      "cl0": 0,
+      "clMax": 1.1,
+      "clMin": -1.1,
+      "cd0": 0.01,
+      "e": 0.6,
+      "control": "rudder",
+      "controlCL": 0.6
+    }
+  ],
+  "engines": [
+    {
+      "type": "jet",
+      "power": 0,
+      "thrust": 13000,
+      "efficiency": 1,
+      "staticThrust": 13000,
+      "spoolTime": 6,
+      "idleRpm": 22,
+      "maxRpm": 100,
+      "torqueFactor": 0,
+      "pFactor": 0,
+      "fuelBurn": 0.12,
+      "pos": [
+        -1.3,
+        0.6,
+        4.5
+      ]
+    },
+    {
+      "type": "jet",
+      "power": 0,
+      "thrust": 13000,
+      "efficiency": 1,
+      "staticThrust": 13000,
+      "spoolTime": 6,
+      "idleRpm": 22,
+      "maxRpm": 100,
+      "torqueFactor": 0,
+      "pFactor": 0,
+      "fuelBurn": 0.12,
+      "pos": [
+        1.3,
+        0.6,
+        4.5
+      ]
+    }
+  ],
+  "gear": [
+    {
+      "name": "nose",
+      "pos": [
+        0,
+        -0.8,
+        -4.0
+      ],
+      "length": 0.65,
+      "stiffness": 120000,
+      "damping": 14000,
+      "steer": 30,
+      "wheelRadius": 0.3
+    },
+    {
+      "name": "mainL",
+      "pos": [
+        -1.6,
+        -0.8,
+        0.5
+      ],
+      "length": 0.65,
+      "stiffness": 215000,
+      "damping": 28000,
+      "brakes": true,
+      "wheelRadius": 0.32
+    },
+    {
+      "name": "mainR",
+      "pos": [
+        1.6,
+        -0.8,
+        0.5
+      ],
+      "length": 0.65,
+      "stiffness": 215000,
+      "damping": 28000,
+      "brakes": true,
+      "wheelRadius": 0.32
+    }
+  ],
+  "crashPoints": [
+    [
+      -7.9,
+      -0.4,
+      1.6
+    ],
+    [
+      7.9,
+      -0.4,
+      1.6
+    ],
+    [
+      0,
+      -0.9,
+      -5.5
+    ],
+    [
+      0,
+      -0.1,
+      7.2
+    ],
+    [
+      0,
+      2.6,
+      7.0
+    ],
+    [
+      0,
+      -1.0,
+      0.5
+    ]
+  ],
+  "flaps": {
+    "steps": [
+      0,
+      0.33,
+      0.67,
+      1
+    ],
+    "clMaxGain": 0.75,
+    "cl0Gain": 0.5,
+    "cdGain": 0.06,
+    "speed": 0.15,
+    "vfe": 200
+  },
+  "limits": {
+    "vne": 290,
+    "gMax": 3.2,
+    "gMin": -1.2
+  },
+  "speeds": {
+    "vs0": 84,
+    "vs1": 102,
+    "vr": 110,
+    "vy": 160,
+    "vapp": 118,
+    "vcruise": 250
+  },
+  "cameras": {
+    "cockpit": [
+      -0.45,
+      0.6,
+      -4.3
+    ],
+    "chase": [
+      0,
+      4.2,
+      24
+    ]
+  },
+  "approachPower": 0.5
+}
