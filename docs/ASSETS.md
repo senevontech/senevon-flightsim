@@ -36,7 +36,7 @@ Each aircraft model needs **separate named nodes** for animated parts: `aileron_
 `elevator`, `rudder`, `flap_L`, `flap_R`, `gear_*`, `prop`, `door_*`, plus empties for the camera
 points and wheel contact points.
 
-## 3b. Using open-licence aircraft models (GLB)
+## 3b. Using open-licence aircraft models (GLB or OBJ + MTL)
 
 Pipeline (built 2026-11-24): `src/engine/modelSpecs.ts` maps an aircraft id to a GLB in
 `public/models/`; `src/engine/glbModel.ts` loads it (Meshopt supported), fits it to the flight model
@@ -44,6 +44,12 @@ Pipeline (built 2026-11-24): `src/engine/modelSpecs.ts` maps an aircraft id to a
 gear contact line, optional `offset`) and drives its parts. Until the file loads, or if it fails,
 the coded model is shown. Dev URL options: `?glb=<file>` tries a file on the current aircraft,
 `?model=coded` forces the coded model; `window.__skyward.model.parts` lists what was bound.
+
+OBJ + MTL (added 2026-11-25): a spec `file` ending in `.obj` loads with the `.mtl` of the same name
+(and any textures it names) from `public/models/`. MTL (Phong) materials are converted to PBR. OBJ
+keeps no pivots, so the bound parts' origins are set automatically: propeller at its centre,
+surfaces at their leading edge, gear at its top. Part names come from the OBJ `o`/`g` names, so name
+them as in the list below. GLB stays preferred (smaller, compressed, real pivots).
 
 Preparing a model (Blender):
 1. Licence is CC0 or CC-BY (never NC, never GPL, never "editorial"); record it below.

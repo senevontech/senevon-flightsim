@@ -60,3 +60,27 @@ describe("GLB aircraft models", () => {
     expect(p.z).toBeLessThan(c.z);
   });
 });
+
+describe("pivotParts (OBJ models)", () => {
+  it("moves a prop's origin to its centre and a surface's to its leading edge", async () => {
+    const { BoxGeometry, Group, Mesh } = await import("three");
+    const { bindParts, pivotParts } = await import("../glbModel");
+    const root = new Group();
+    const prop = new Mesh(new BoxGeometry(2, 2, 0.1).translate(0, 1, -4));
+    prop.name = "propeller";
+    const elev = new Mesh(new BoxGeometry(3, 0.1, 0.6).translate(0, 0.5, 5));
+    elev.name = "elevator";
+    root.add(prop, elev);
+    const parts = bindParts(root);
+    pivotParts(parts, 0);
+    expect(prop.position.distanceTo(new Vector3(0, 1, -4))).toBeLessThan(1e-5);
+    expect(elev.position.z).toBeCloseTo(4.7); // leading edge = forward (−Z) side
+    expect(elev.position.y).toBeCloseTo(0.5);
+    // the geometry stays where it was in the model
+    root.updateMatrixWorld(true);
+    const { Box3 } = await import("three");
+    const b = new Box3().setFromObject(elev);
+    expect(b.min.z).toBeCloseTo(4.7);
+    expect(b.max.z).toBeCloseTo(5.3);
+  });
+});

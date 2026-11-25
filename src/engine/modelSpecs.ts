@@ -25,7 +25,8 @@ export interface ModelCredit {
 }
 
 export interface ModelSpec {
-  /** File under public/models/ (GLB; Meshopt compression supported). */
+  /** File under public/models/: GLB (Meshopt compression supported) or OBJ, with its materials
+      in a .mtl of the same name and any textures beside it. OBJ part pivots are set automatically. */
   file: string;
   credit: ModelCredit;
   /** Turn the model about Y so its nose points along −Z (the sim's forward), degrees. */

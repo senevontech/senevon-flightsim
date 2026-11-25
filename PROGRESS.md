@@ -195,3 +195,4 @@
 | 2026-11-24 | R2.2: adaptive (dynamic) HUD contrast |
 | 2026-11-24 | R2.1: transparent HUD, round 2 % frosted gauges |
 | 2026-11-23 | R2: glass HUD, taxi steering fix, mobile refinement, weather system, cloud/tree/building/farmland visuals, Mayday scenarios |
+| 2026-11-25 | Aircraft models can also be OBJ + MTL (glbModel.ts `loadObj`, Phong→PBR, `pivotParts` sets hinge/prop/gear origins automatically); verified in-game with a generated test OBJ; +1 test (117) |

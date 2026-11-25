@@ -7,9 +7,12 @@
    AircraftVisual shows the coded model at once and swaps to the GLB when it has loaded, so a
    missing or broken file never leaves the player without an aircraft. */
 import {
-  Box3, CircleGeometry, DoubleSide, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3, type Object3D,
+  Box3, CircleGeometry, DoubleSide, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3, type Material,
+  type MeshPhongMaterial, type Object3D,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import type { AircraftSim } from "../sim/aircraft";
 import { DEG, type AircraftConfig, type Controls } from "../sim/types";
@@ -61,6 +64,48 @@ export function deflection(kind: PartKind, c: Controls, flaps: number): number {
   }
 }
 
+/** OBJ files keep no pivots: every part's origin is the model origin, so hinges would swing about
+    the middle of the aircraft. Move each bound part's origin to where it really turns — propeller:
+    its centre (spinning about the nose axis); surfaces: their leading edge (the hinge line, turning
+    about the wing's span axis, or the vertical for the rudder); gear: its top, where it folds.
+    Works in the model's own space (before fitModel), so `yawDeg` says which way is forward. */
+export function pivotParts(parts: BoundPart[], yawDeg = 0): void {
+  const yaw = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -yawDeg * DEG);
+  const fwd = new Vector3(0, 0, -1).applyQuaternion(yaw);
+  const right = new Vector3(1, 0, 0).applyQuaternion(yaw);
+  for (const p of parts) {
+    const node = p.node;
+    if (!node.parent) continue;
+    node.parent.updateMatrixWorld(true);
+    const box = new Box3().setFromObject(node, true);
+    if (box.isEmpty()) continue;
+    // box is in world space; take it into the parent's space (identity for OBJLoader output)
+    const inv = node.parent.matrixWorld.clone().invert();
+    box.applyMatrix4(inv);
+    const c = box.getCenter(new Vector3());
+    const size = box.getSize(new Vector3());
+    let pivot: Vector3;
+    if (p.kind === "prop") {
+      pivot = c;
+      p.axis.copy(fwd);
+    } else if (p.kind === "gear") {
+      pivot = new Vector3(c.x, box.max.y, c.z);
+    } else {
+      const half = 0.5 * (Math.abs(fwd.x) * size.x + Math.abs(fwd.z) * size.z);
+      pivot = c.addScaledVector(fwd, half);
+      p.axis.copy(p.kind === "rudder" ? new Vector3(0, 1, 0) : right);
+    }
+    const shift = pivot.clone().sub(node.position);
+    if ((node as Mesh).isMesh) {
+      const m = node as Mesh;
+      m.geometry = m.geometry.clone();
+      m.geometry.translate(-shift.x, -shift.y, -shift.z);
+    }
+    for (const ch of node.children) ch.position.sub(shift);
+    node.position.copy(pivot);
+  }
+}
+
 /** Fit a loaded model into the aircraft's body frame (+X right, +Y up, −Z forward). */
 export function fitModel(model: Object3D, cfg: AircraftConfig, spec: Pick<ModelSpec, "yawDeg" | "span" | "offset">): Group {
   const holder = new Group();
@@ -97,6 +142,7 @@ export class GlbAircraftModel {
       if ((o as Mesh).isMesh) o.castShadow = o.receiveShadow = true;
     });
     this.parts = bindParts(model, spec.parts ?? DEFAULT_PARTS);
+    if (isObj(spec.file)) pivotParts(this.parts, spec.yawDeg);
     this.root.add(fitModel(model, sim.cfg, spec));
     this.root.updateMatrixWorld(true);
     // propeller blur discs, sized from the propeller's extent (converted to its parent's units)
@@ -151,10 +197,48 @@ function worldScale(o: Object3D): number {
 // ---- loading (one request per file, shared between aircraft switches) ----
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const cache = new Map<string, Promise<Object3D>>();
+const isObj = (file: string) => /\.obj$/i.test(file);
+
+/** OBJ + MTL: the .mtl next to the .obj (same name) supplies the materials and textures; without
+    one the model loads plain grey. MTL gives Phong materials — they are swapped for standard
+    (PBR) ones so the model takes the sky reflections and shading like everything else. */
+async function loadObj(dir: string, file: string): Promise<Object3D> {
+  const mtlFile = file.replace(/\.obj$/i, ".mtl");
+  const objLoader = new OBJLoader();
+  try {
+    const mtl = await new MTLLoader().setPath(dir).setResourcePath(dir).loadAsync(mtlFile);
+    mtl.preload();
+    objLoader.setMaterials(mtl);
+  } catch {
+    console.warn(`No ${mtlFile} found; ${file} loads without materials.`);
+  }
+  const root = await objLoader.setPath(dir).loadAsync(file);
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    m.material = Array.isArray(m.material) ? m.material.map(toStandard) : toStandard(m.material);
+  });
+  return root;
+}
+
+function toStandard(src: Material): Material {
+  const ph = src as MeshPhongMaterial;
+  if (!ph.isMeshPhongMaterial) return src;
+  const shin = ph.shininess ?? 30;
+  const out = new MeshStandardMaterial({
+    name: ph.name, color: ph.color, map: ph.map, normalMap: ph.normalMap, alphaMap: ph.alphaMap,
+    emissive: ph.emissive, emissiveMap: ph.emissiveMap, transparent: ph.transparent, opacity: ph.opacity,
+    side: ph.side, roughness: Math.min(0.95, Math.max(0.25, 1 - Math.sqrt(shin / 200))), metalness: 0.1,
+  });
+  ph.dispose();
+  return out;
+}
+
 function loadScene(file: string): Promise<Object3D> {
   let p = cache.get(file);
   if (!p) {
-    p = loader.loadAsync(`${import.meta.env.BASE_URL}models/${file}`).then((g) => g.scene);
+    const dir = `${import.meta.env.BASE_URL}models/`;
+    p = isObj(file) ? loadObj(dir, file) : loader.loadAsync(dir + file).then((g) => g.scene);
     cache.set(file, p);
     p.catch(() => cache.delete(file));
   }
