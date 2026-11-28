@@ -1,10 +1,20 @@
 /* On-screen controls for phones and tablets:
    - left: a floating stick (drag anywhere in the left zone), or TILT steering when enabled;
-   - right: a vertical throttle slider and buttons (flaps, brakes, camera, autopilot, rewind).
+   - right: a vertical throttle slider with FLAP ▲ / FLAP ▼ / BRAKE beside it, and a row of
+     small round buttons above (camera, autopilot, rewind, gear). Landscape only.
    Writes into InputManager.touch / throttle / flaps, so assists and physics are unchanged. */
 import type { InputManager } from "./controls";
 
 const clamp = (v: number, lo = -1, hi = 1) => Math.min(hi, Math.max(lo, v));
+
+/** Thumb offset (−1…1 of the stick radius) → stick input: a small dead zone, then straight.
+    The assists already shape the response (sim/assists.ts); a second curve here made the middle
+    of the stick feel dead (half deflection banked only 9° in Easy) and the edge abrupt. */
+export function stickAxis(v: number): number {
+  const a = Math.abs(v);
+  if (a < 0.06) return 0;
+  return Math.sign(v) * Math.min(1, (a - 0.06) / 0.94);
+}
 
 export class TouchControls {
   readonly el = document.createElement("div");
@@ -30,21 +40,25 @@ export class TouchControls {
         <div class="tc-tilt-label hidden" data-t="tilt">TILT</div>
       </div>
       <div class="tc-right">
-        <div class="tc-buttons">
-          <button data-a="flapsUp" aria-label="Flaps up">FLAP ▲</button>
-          <button data-a="flapsDown" aria-label="Flaps down">FLAP ▼</button>
-          <button data-a="brake" aria-label="Brakes (hold)">BRK</button>
+        <div class="tc-icons">
           <button data-a="camera" aria-label="Camera">CAM</button>
           <button data-a="autopilot" aria-label="Autopilot">AP</button>
+          <button data-a="rewind" aria-label="Rewind 10 seconds">⟲</button>
           <button data-a="gear" aria-label="Landing gear">GEAR</button>
-          <button data-a="rewind" aria-label="Rewind 10 seconds">⟲ 10s</button>
         </div>
-        <div class="tc-throttle" data-t="thr" aria-label="Throttle">
-          <div class="tc-thr-fill" data-t="fill"></div>
-          <div class="tc-thr-ticks"></div>
-          <div class="tc-thr-mark top">FULL</div>
-          <div class="tc-thr-mark bottom">IDLE</div>
-          <div class="tc-thr-label" data-t="thrLabel">0%</div>
+        <div class="tc-pad">
+          <div class="tc-buttons">
+            <button data-a="flapsUp" aria-label="Flaps up">FLAP ▲</button>
+            <button data-a="flapsDown" aria-label="Flaps down">FLAP ▼</button>
+            <button data-a="brake" aria-label="Brakes (hold)">BRAKE</button>
+          </div>
+          <div class="tc-throttle" data-t="thr" aria-label="Throttle">
+            <div class="tc-thr-fill" data-t="fill"></div>
+            <div class="tc-thr-ticks"></div>
+            <div class="tc-thr-mark top">FULL</div>
+            <div class="tc-thr-mark bottom">IDLE</div>
+            <div class="tc-thr-label" data-t="thrLabel">0%</div>
+          </div>
         </div>
       </div>`;
     const q = (s: string) => this.el.querySelector(`[data-t=${s}]`) as HTMLElement;
@@ -137,22 +151,14 @@ export class TouchControls {
     const l = Math.hypot(dx, dy);
     if (l > 1) { dx /= l; dy /= l; }
     this.knob.style.transform = `translate(calc(-50% + ${dx * R}px), calc(-50% + ${dy * R}px))`;
-    const dz = (v: number) => {
-      const a = Math.abs(v);
-      if (a < 0.06) return 0;
-      const t = (a - 0.06) / 0.94;
-      return Math.sign(v) * (0.35 * t + 0.65 * t * t); // fine near centre, full at the edge
-    };
-    this.input.touch.roll = dz(dx);
+    this.input.touch.roll = stickAxis(dx);
     // stick convention: pull back (drag down) = nose up
-    this.input.touch.pitch = dz(dy);
+    this.input.touch.pitch = stickAxis(dy);
   }
 
   /** Show the GEAR button only on aircraft with retractable gear. */
   setGearAvailable(on: boolean): void {
     this.el.querySelector("[data-a=gear]")?.classList.toggle("hidden", !on);
-    // keep the grid tidy: with GEAR the rewind button is the odd one out and spans both columns
-    this.el.querySelector("[data-a=rewind]")?.classList.toggle("wide", on);
   }
 
   get tilt(): boolean {

@@ -1,34 +1,81 @@
-/* Moving map (north up): island map rendered once in a worker, airports with runway lines and
-   ids, the aircraft at the centre, and a range ring. Tap/click toggles a larger, zoomed-out view. */
+/* Moving map (north up): a background image (the procedural region rendered once in a worker,
+   or satellite tiles stitched around the airport in the real world), airports with runway lines
+   and ids, the aircraft at the centre, and a range ring. Tap/click toggles a larger, zoomed-out
+   view. */
 import type { Airport } from "../world/WorldProvider";
 import type { MapRequest, MapResult } from "../workers/terrain.worker";
+import type { GeoFrame } from "../world/real/geo";
+import { tileLatLon, tileXY } from "../world/real/geo";
+import { imageryUrl } from "../engine/realTerrain";
 
-const EXTENT = 60000; // metres covered by the map image
+const EXTENT = 131072; // metres covered by the procedural map image (the whole region)
+
+/** The map image and the world rectangle it covers. */
+interface MapImage {
+  img: HTMLCanvasElement;
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+}
 
 export class Minimap {
   readonly el = document.createElement("div");
   private canvas = document.createElement("canvas");
   private g = this.canvas.getContext("2d")!;
-  private img: HTMLCanvasElement | null = null;
+  private bg: MapImage | null = null;
   private last = 0;
   expanded = false;
 
-  constructor(private airports: Airport[]) {
+  constructor(private airports: Airport[], real: GeoFrame | null = null) {
     this.el.className = "minimap";
     this.el.innerHTML = `<div class="map-label">MAP</div>`;
     this.el.prepend(this.canvas);
     this.el.addEventListener("click", () => this.toggle());
+    if (real) this.satellite(real);
+    else this.procedural();
+  }
+
+  private procedural(): void {
     const w = new Worker(new URL("../workers/terrain.worker.ts", import.meta.url), { type: "module" });
     w.onmessage = (e: MessageEvent<MapResult>) => {
       const { size, pixels } = e.data;
       const c = document.createElement("canvas");
       c.width = c.height = size;
       c.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(pixels), size, size), 0, 0);
-      this.img = c;
+      this.bg = { img: c, x0: -EXTENT / 2, z0: -EXTENT / 2, x1: EXTENT / 2, z1: EXTENT / 2 };
       w.terminate();
     };
-    const req: MapRequest = { kind: "map", id: 0, size: 512, extent: EXTENT };
+    const req: MapRequest = { kind: "map", id: 0, size: 1024, extent: EXTENT };
     w.postMessage(req);
+  }
+
+  /** Real world: satellite tiles (zoom 9, ~300 m a pixel) stitched over ±100 km of the airport,
+      fetched after the terrain's first tiles (they share the imagery server's connections). */
+  private satellite(frame: GeoFrame): void {
+    const Z = 9;
+    const o = frame.origin;
+    const half = 100000 / (111320 * Math.cos((o.lat * Math.PI) / 180));
+    const a = tileXY(o.lat + 0.9, o.lon - half, Z), b = tileXY(o.lat - 0.9, o.lon + half, Z);
+    const tx0 = Math.floor(a.x), ty0 = Math.floor(a.y), tx1 = Math.floor(b.x), ty1 = Math.floor(b.y);
+    const c = document.createElement("canvas");
+    c.width = (tx1 - tx0 + 1) * 256;
+    c.height = (ty1 - ty0 + 1) * 256;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#0b3a62";
+    g.fillRect(0, 0, c.width, c.height);
+    const nw = tileLatLon(tx0, ty0, Z), se = tileLatLon(tx1 + 1, ty1 + 1, Z);
+    const p0 = frame.toWorld(nw.lat, nw.lon), p1 = frame.toWorld(se.lat, se.lon);
+    this.bg = { img: c, x0: p0.x, z0: p0.z, x1: p1.x, z1: p1.z };
+    const n = 2 ** Z;
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        const im = new Image();
+        im.crossOrigin = "anonymous";
+        im.onload = () => g.drawImage(im, (tx - tx0) * 256, (ty - ty0) * 256);
+        setTimeout(() => { im.src = imageryUrl(Z, ((tx % n) + n) % n, ty); }, 8000);
+      }
+    }
   }
 
   toggle(): void {
@@ -48,16 +95,15 @@ export class Minimap {
       this.canvas.height = H;
     }
     const g = this.g;
-    const range = this.expanded ? 22000 : 9000; // metres from centre to edge
+    const range = this.expanded ? 40000 : 9000; // metres from centre to edge
     const ppm = (Math.min(W, H) / 2) / range; // pixels per metre
     g.fillStyle = "#0b3a62";
     g.fillRect(0, 0, W, H);
-    if (this.img) {
-      const s = this.img.width / EXTENT; // image px per metre
-      const sx = (x + EXTENT / 2) * s - (W / 2 / ppm) * s;
-      const sz = (z + EXTENT / 2) * s - (H / 2 / ppm) * s;
+    if (this.bg) {
+      const b = this.bg;
+      const sx = b.img.width / (b.x1 - b.x0), sz = b.img.height / (b.z1 - b.z0); // image px per metre
       g.imageSmoothingEnabled = true;
-      g.drawImage(this.img, sx, sz, (W / ppm) * s, (H / ppm) * s, 0, 0, W, H);
+      g.drawImage(b.img, (x - W / 2 / ppm - b.x0) * sx, (z - H / 2 / ppm - b.z0) * sz, (W / ppm) * sx, (H / ppm) * sz, 0, 0, W, H);
     }
     const toPx = (wx: number, wz: number): [number, number] => [W / 2 + (wx - x) * ppm, H / 2 + (wz - z) * ppm];
     // airports

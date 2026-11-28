@@ -43,7 +43,16 @@ const html = String.raw;
 
 export class Hud {
   private el: HTMLElement;
-  private $ = <T extends HTMLElement = HTMLElement>(sel: string) => this.el.querySelector(sel) as T;
+  /** Element lookup, cached: update() runs every frame and must not query the DOM each time. */
+  private found = new Map<string, HTMLElement>();
+  private $ = <T extends HTMLElement = HTMLElement>(sel: string): T => {
+    let e = this.found.get(sel);
+    if (!e || !e.isConnected) {
+      e = this.el.querySelector(sel) as HTMLElement;
+      if (e) this.found.set(sel, e);
+    }
+    return e as T;
+  };
   private last = new Map<HTMLElement, string>();
   private calloutsDone = new Set<number>();
   private toastTimer = 0;
@@ -74,7 +83,11 @@ export class Hud {
         <div class="radio" data-k="radio"></div>
       </div>
       <div class="hud-top">
-        <div class="tape-slot" data-k="tapeSlot"></div>
+        <div class="pfd-row">
+          <div class="pfd-box glass" data-k="pspd"><b data-k="dspd">0</b><label>KT</label></div>
+          <div class="tape-slot" data-k="tapeSlot"></div>
+          <div class="pfd-box glass" data-k="palt"><b data-k="dalt">0</b><label>FT</label><span class="pfd-vs" data-k="dvs"></span></div>
+        </div>
         <div class="chip nav" data-k="navwrap"><span class="nav-arrow" data-k="navarrow">▲</span><span data-k="nav"></span></div>
       </div>
       <div class="hud-tr" data-k="mapSlot"></div>
@@ -110,8 +123,8 @@ export class Hud {
           <h2>Skyward <span class="dim">· Coral Coast</span></h2>
           <div class="help-touch">
             <p><b>Left thumb:</b> drag anywhere on the left to steer. Pull down = nose up.</p>
-            <p><b>Right thumb:</b> slide the throttle; buttons for flaps, brakes, camera, autopilot and rewind.</p>
-            <p>Tilt steering and more are in the menu (top-left).</p>
+            <p><b>Right thumb:</b> slide the throttle up for power; FLAP and BRAKE beside it. Small round buttons above: camera, autopilot, rewind.</p>
+            <p><b>Takeoff:</b> full throttle, and at about 55 kt pull the stick gently down. Let go and the plane flies itself.</p>
           </div>
           <div class="keys help-keys">
             <div><kbd>S</kbd>/<kbd>↓</kbd><span>Nose up</span></div>
@@ -209,12 +222,24 @@ export class Hud {
     this.$("[data-k=ydot]").style.transform = `translate(${stick.x * range}px, ${-stick.y * range}px)`;
   }
 
+  /** Phone readouts: speed (amber near the stall, red at the stall or overspeed), altitude and
+      climb / sink rate. */
+  private drawReadouts(sim: AircraftSim, info: HudInfo): void {
+    this.set("dspd", String(Math.round(sim.ias / KT)));
+    const spd = this.$("[data-k=pspd]");
+    const state = info.stall > 0.5 || info.warning === "OVERSPEED" ? "bad" : info.stall > 0 ? "warn" : "";
+    if ((spd.dataset.state ?? "") !== state) spd.dataset.state = state;
+    this.set("dalt", String(Math.round(sim.pos.y / FT / 10) * 10));
+    const vs = Math.round(sim.vs / FPM / 50) * 50;
+    this.set("dvs", Math.abs(vs) < 50 ? "" : `${vs > 0 ? "\u25B2" : "\u25BC"}${Math.abs(vs)}`);
+  }
+
   /** Hook every HUD element that floats over the scene into adaptive contrast. The attitude
       indicator is left out: it carries its own sky/ground background. */
   registerContrast(ac: AdaptiveContrast): void {
     this.contrast = ac;
     for (const g of [this.asi, this.alt, this.vsi, this.tape]) ac.register(g.canvas, (t) => g.setTone(t));
-    for (const k of ["menuBtn", "radio", "navwrap", "bestwrap", "toast", "callout", "rate"]) ac.register(this.$(`[data-k=${k}]`));
+    for (const k of ["menuBtn", "radio", "navwrap", "bestwrap", "toast", "callout", "rate", "pspd", "palt"]) ac.register(this.$(`[data-k=${k}]`));
     ac.register(this.el.querySelector(".strip") as HTMLElement);
   }
 
@@ -305,13 +330,16 @@ export class Hud {
   }
 
   update(sim: AircraftSim, c: Controls, info: HudInfo, now: number): void {
-    // instruments at ~30 Hz (frozen when the electrics are dead)
+    // instruments at ~30 Hz (frozen when the electrics are dead); phones show digital readouts
+    // instead of the round gauges, so those are not drawn there
     if (!this.electrical && now - this.lastGauges > 33) {
       this.lastGauges = now;
-      this.asi.draw(sim.ias / KT);
-      this.adi.draw(sim.pitchDeg, sim.bankDeg);
-      this.alt.draw(sim.pos.y / FT);
-      this.vsi.draw(sim.vs / FPM);
+      if (!document.body.classList.contains("touch")) {
+        this.asi.draw(sim.ias / KT);
+        this.adi.draw(sim.pitchDeg, sim.bankDeg);
+        this.alt.draw(sim.pos.y / FT);
+        this.vsi.draw(sim.vs / FPM);
+      } else this.drawReadouts(sim, info);
       this.tape.draw(sim.headingDeg, sim.groundSpeed > 5 ? sim.trackDeg : null);
     }
     this.$("[data-k=thr]").style.height = `${Math.round(c.throttle * 100)}%`;

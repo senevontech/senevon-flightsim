@@ -62,6 +62,8 @@ export class Assists {
   }
 
   reset(): void {
+    this.lastAoa = 0;
+    this.aoaRate = 0;
     this.iPitch = 0;
     this.iRoll = 0;
     this.pitchHold = null;
@@ -109,13 +111,18 @@ export class Assists {
       return out;
     }
     if (!this.wasAir) {
-      // just lifted off (or spawned airborne): start holding what we have
+      // just lifted off (or spawned airborne): start holding what we have, and start the angle-of-
+      // attack rate from here — a stale value would read as a sudden pitch-up and the stall guard
+      // would shove the nose down right after takeoff
       this.pitchHold = sim.pitchDeg;
       this.bankHold = sim.bankDeg;
+      this.lastAoa = sim.wingAoa;
+      this.aoaRate = 0;
       this.wasAir = true;
     }
 
-    this.aoaRate += ((sim.wingAoa - this.lastAoa) / dt - this.aoaRate) * Math.min(1, dt * 8);
+    const aoaRateNow = clamp((sim.wingAoa - this.lastAoa) / dt, -40 * DEG, 40 * DEG);
+    this.aoaRate += (aoaRateNow - this.aoaRate) * Math.min(1, dt * 8);
     this.lastAoa = sim.wingAoa;
     const agility = sim.cfg.agility ?? { roll: 1, pitch: 1 };
     const V = Math.max(sim.tas, 15);
@@ -132,6 +139,14 @@ export class Assists {
       this.pitchHold = sim.pitchDeg;
     } else {
       if (this.pitchHold === null) this.pitchHold = sim.pitchDeg;
+      // Easy, hands off: never hold an attitude the speed can't keep. Using more than 60 % of
+      // the wing's maximum lift means flying slower than ~1.3× the stall speed; then the held
+      // attitude eases down (up to 3°/s), so letting go after a steep pull settles into a
+      // normal climb instead of bleeding speed toward the stall horn
+      if (f.stallProtection === "hard") {
+        const over = this.liftFraction(sim) - 0.6;
+        if (over > 0) this.pitchHold -= Math.min(3, over * 25) * dt;
+      }
       qCmd = clamp((this.pitchHold - sim.pitchDeg) * 0.8, -4, 4) * DEG + qTurn;
     }
     // g limits
@@ -198,6 +213,16 @@ export class Assists {
     const cl0 = wing.cfg.cl0 + cfg.flaps.cl0Gain * sim.flaps;
     const clMax = wing.cfg.clMax + cfg.flaps.clMaxGain * sim.flaps;
     return (clMax - cl0) / wing.slope;
+  }
+
+  /** Share of the wing's maximum lift coefficient in use (≈ (stall speed / speed)² in level flight). */
+  private liftFraction(sim: AircraftSim): number {
+    const wing = sim.surfaces.find((s) => s.isWing);
+    if (!wing) return 0;
+    const cfg = sim.cfg;
+    const cl0 = wing.cfg.cl0 + cfg.flaps.cl0Gain * sim.flaps;
+    const clMax = wing.cfg.clMax + cfg.flaps.clMaxGain * sim.flaps;
+    return (cl0 + wing.slope * sim.wingAoa) / clMax;
   }
 
   /** Stall warning level 0..1 for the HUD/horn (starts ~4° before the stall). */

@@ -22,8 +22,8 @@ describe("Coral Coast region", () => {
     }
   });
 
-  it("has 7 airports with flat runways above the sea", () => {
-    expect(cc.airports.length).toBe(7);
+  it("has 14 airports with flat runways above the sea", () => {
+    expect(cc.airports.length).toBe(14);
     for (const a of cc.airports) {
       expect(a.elevation).toBeGreaterThan(2);
       const r = a.runways[0];

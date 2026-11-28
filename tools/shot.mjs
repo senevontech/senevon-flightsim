@@ -1,7 +1,7 @@
 // Visual check (MOBILE=1 for phone emulation): node tools/shot.mjs <url> <out.png> [waitSeconds] [width] [height] [js-to-eval-before-shot]
-// Launches headless Chrome (SwiftShader), loads the page, waits in real time, prints console errors and
+// Launches headless Chrome (SwiftShader; GPU=1 uses the real GPU for timing), loads the page, waits in real time, prints console errors and
 // shader compile errors, then saves a screenshot. Run "npm run dev" first. In dev, window.__skyward exposes
-// { scene, world, sim, rig } for the eval step. URL options: ?quality=low|high&spawn=approach&time=0..4
+// { scene, world, sim, rig } for the eval step. PROFILE=<file> saves a CPU profile (load → shot). URL options: ?quality=low|high&spawn=approach&time=0..4
 import { spawn } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -11,7 +11,9 @@ const dir = join(process.env.TEMP ?? ".", "skyward-chrome-" + Date.now());
 mkdirSync(dir, { recursive: true });
 const port = 9300 + Math.floor(Math.random() * 500);
 const chrome = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", [
-  "--headless=new", "--disable-extensions", "--use-angle=swiftshader", "--enable-unsafe-swiftshader",
+  "--headless=new", "--disable-extensions",
+  ...(process.env.GPU ? ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist", "--disable-frame-rate-limit"]
+    : ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]),
   `--user-data-dir=${dir}`, `--window-size=${w},${h}`, `--remote-debugging-port=${port}`, "about:blank",
 ], { stdio: "ignore" });
 
@@ -45,6 +47,7 @@ if (mobile) {
   await send("Emulation.setEmitTouchEventsForMouse", { enabled: true, configuration: "mobile" });
   await send("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36" });
 }
+if (process.env.PROFILE) { await send("Profiler.enable"); await send("Profiler.setSamplingInterval", { interval: 200 }); await send("Profiler.start"); }
 await send("Page.navigate", { url });
 await sleep(+wait * 1000);
 if (evalJs) {
@@ -55,6 +58,11 @@ if (evalJs) {
     console.log("eval output saved", process.env.EVALOUT);
   }
   await sleep(4000);
+}
+if (process.env.PROFILE) {
+  const { profile } = await send("Profiler.stop");
+  writeFileSync(process.env.PROFILE, JSON.stringify(profile)); // CPU profile from page load to here
+  console.log("profile saved", process.env.PROFILE);
 }
 const shot = await send("Page.captureScreenshot", { format: "png" });
 writeFileSync(out, Buffer.from(shot.data, "base64"));

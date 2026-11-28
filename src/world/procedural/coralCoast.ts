@@ -1,6 +1,7 @@
-/* Coral Coast: the starter region. A tropical archipelago (~48 × 48 km) generated from a seed:
-   islands shaped by warped noise, coral reefs and lagoons, hills, ridged mountains, a volcano, and
-   seven airports whose sites are flattened into the terrain.
+/* Coral Coast: the starter region. A tropical archipelago (~120 × 120 km) generated from a seed:
+   islands shaped by warped noise, coral reefs and lagoons, hills, ridged mountains, two
+   volcanoes, and airports whose sites are flattened into the terrain. The inner seven islands
+   are the original region; an outer ring (2026-11-28) quadrupled the area.
    This module is pure (no DOM / three.js) so it runs in the terrain workers too. */
 import { Simplex2, smoothstep } from "./noise";
 import { runwayPair, type Airport, type Runway, type SurfaceType } from "../WorldProvider";
@@ -37,7 +38,18 @@ const ISLANDS: Island[] = [
   { x: -17500, z: 16500, r: 4000, peak: 260 }, // Sunset
   { x: 23500, z: 1500, r: 2600, peak: 40 }, // Reef atoll
   { x: 3000, z: -22000, r: 3000, peak: 160 }, // Pearl
+  // ---- outer ring ----
+  { x: -2000, z: -46000, r: 14500, peak: 1500 }, // Northreach (highlands)
+  { x: -44000, z: -40000, r: 7500, peak: 1450, volcano: true }, // Ash Rock
+  { x: -47000, z: 2000, r: 10500, peak: 900 }, // Mesa Grande
+  { x: 2000, z: 46000, r: 11500, peak: 480 }, // Southhaven
+  { x: 46000, z: -16000, r: 9000, peak: 320 }, // Long Key
+  { x: 40000, z: 30000, r: 6500, peak: 420 }, // Twin North
+  { x: 51000, z: 42000, r: 4500, peak: 200 }, // Twin South
+  { x: -34000, z: 44000, r: 3200, peak: 50 }, // Gull atoll
 ];
+/** An island can't lift the terrain further than this many radii from its centre. */
+const ISLAND_REACH = 1.75;
 
 const AIRPORTS: AirportDef[] = [
   // sites chosen by a search over the raw terrain: lowland, ≤ 22 m relief under the pad, and
@@ -49,6 +61,15 @@ const AIRPORTS: AirportDef[] = [
   { id: "SKY5", name: "Lagoon Field", x: 12950, z: 15750, heading: 150, length: 1000, width: 28, surface: "asphalt", size: "regional" },
   { id: "SKY6", name: "Reef Strip", x: 25000, z: 1250, heading: 120, length: 700, width: 22, surface: "grass", size: "strip" },
   { id: "SKY7", name: "Sunset Hills", x: -19200, z: 13200, heading: 15, length: 650, width: 22, surface: "grass", size: "strip" },
+  // outer ring (2026-11-28): same rules — ≤ 22 m relief under the pad, the whole pad on land, and
+  // ≥ 30 m under a 3° path out to 5 km both ways (searched over the raw terrain)
+  { id: "SKY8", name: "Northreach Highlands", x: 9400, z: -51600, heading: 170, length: 1800, width: 40, surface: "asphalt", size: "major" },
+  { id: "SKY9", name: "Mesa Grande", x: -54400, z: -4400, heading: 20, length: 1200, width: 30, surface: "asphalt", size: "regional" },
+  { id: "SKY10", name: "Southhaven International", x: -5450, z: 41050, heading: 0, length: 2200, width: 45, surface: "asphalt", size: "major" },
+  { id: "SKY11", name: "Long Key", x: 53050, z: -18700, heading: 170, length: 1300, width: 30, surface: "asphalt", size: "regional" },
+  { id: "SKY12", name: "Twin North", x: 35550, z: 29550, heading: 170, length: 1000, width: 28, surface: "asphalt", size: "regional" },
+  { id: "SKY13", name: "Twin South", x: 47900, z: 41150, heading: 10, length: 800, width: 25, surface: "asphalt", size: "strip" },
+  { id: "SKY14", name: "Gull Atoll", x: -32300, z: 44700, heading: 130, length: 650, width: 22, surface: "grass", size: "strip" },
 ];
 
 /** Half extents of the flattened area around a runway, and the blend distance. */
@@ -93,7 +114,7 @@ export class CoralCoast {
   readonly airportSizes = new Map<string, AirportDef["size"]>();
   private flats: FlatZone[];
   /** Total extent of the generated terrain (square, centred on 0,0). */
-  readonly extent = 65536;
+  readonly extent = 131072;
 
   constructor() {
     this.flats = [];
@@ -122,6 +143,9 @@ export class CoralCoast {
     let isl: Island = ISLANDS[0];
     let dRel = 1;
     for (const i of ISLANDS) {
+      // beyond ISLAND_REACH radii an island's value (1 − d) is below the open-sea floor (−0.7)
+      const reach = i.r * ISLAND_REACH;
+      if (Math.abs(wx - i.x) > reach || Math.abs(wz - i.z) > reach) continue;
       const d = Math.hypot(wx - i.x, wz - i.z) / i.r;
       const v = 1 - d;
       if (v > m) {

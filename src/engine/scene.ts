@@ -17,7 +17,9 @@ import { VolumetricClouds } from "./volumetricClouds";
 import { CloudLayer, Rain } from "./precip";
 import { Scatter } from "./scatter";
 import { AirportVisuals } from "./airports";
-import type { ProceduralWorld } from "../world/procedural/ProceduralWorld";
+import { ProceduralWorld } from "../world/procedural/ProceduralWorld";
+import type { RealWorld } from "../world/real/RealWorld";
+import { RealTerrain } from "./realTerrain";
 import type { AircraftSim } from "../sim/aircraft";
 import type { Runway } from "../world/WorldProvider";
 import type { Weather } from "../gameplay/weather";
@@ -48,7 +50,8 @@ export class WorldScene {
   readonly scene = new Scene();
   readonly sun: DirectionalLight;
   readonly hemi: HemisphereLight;
-  readonly terrain: Terrain;
+  /** Procedural terrain (Coral Coast) or the real-world tile terrain. */
+  readonly terrain: Terrain | RealTerrain;
   readonly ocean = new Ocean();
   readonly clouds: Clouds;
   /** Ray-marched cumulus (High quality only; Low keeps the billboard puffs). */
@@ -56,17 +59,35 @@ export class WorldScene {
   private lastUpdate = 0;
   readonly deck = new CloudLayer();
   readonly rain = new Rain();
-  readonly scatter: Scatter;
+  /** Trees and houses (procedural world only; the satellite imagery carries them in the real world). */
+  readonly scatter: Scatter | null;
   readonly airports: AirportVisuals;
   readonly sunDir = new Vector3();
   private sky = new Sky();
   private pmrem: PMREMGenerator;
   private envTex: Texture | null = null;
   private fog: FogExp2;
+  private probeDir = new Vector3();
+  private probeCol = new Color();
   private base!: BaseLight;
   private weather: Weather | null = null;
   private flash = 0;
   private post: PostFX | null = null;
+  // ---- automatic performance scaling (see adapt()) ----
+  private basePixelRatio: number;
+  /** Render resolution as a fraction of basePixelRatio. */
+  private resScale = 1;
+  /** Highest scale known to hold the frame rate (lowered each time a step up proves too slow). */
+  private resCeiling = 1;
+  /** Steps taken on High when resolution alone was not enough: 1 = billboard clouds, 2 = no post. */
+  private shed = 0;
+  private frameEma = 16.7;
+  private lastFrame = 0;
+  private slowSince = 0;
+  private fastSince = 0;
+  private lastChange = 0;
+  /** Called when the scene sheds an effect to keep the frame rate (for a toast). */
+  onShed: ((what: string) => void) | null = null;
   private shadowHalf: number;
   private shadowMapSize: number;
   private lightBasis = new Matrix4();
@@ -77,11 +98,16 @@ export class WorldScene {
   onLightning: ((delay: number) => void) | null = null;
   hours = 16.6;
 
-  constructor(canvas: HTMLCanvasElement, world: ProceduralWorld, private quality: "low" | "high") {
+  constructor(canvas: HTMLCanvasElement, world: ProceduralWorld | RealWorld, private quality: "low" | "high") {
     installHaze();
-    // High renders through PostFX (MSAA in its own buffer), so the canvas needs no antialiasing
-    const r = (this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", logarithmicDepthBuffer: true }));
-    r.setPixelRatio(Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25));
+    // High renders through PostFX (MSAA in its own buffer), so only Low (straight to the screen)
+    // asks for an antialiased canvas — cheap on phone GPUs, and it removes the stair-stepped edges
+    const r = (this.renderer = new WebGLRenderer({ canvas, antialias: quality === "low", powerPreference: "high-performance", logarithmicDepthBuffer: true }));
+    // the shader error check makes every compile wait for the GPU driver; keep it for development only
+    r.debug.checkShaderErrors = import.meta.env.DEV;
+    // up to 1.5× on both; adapt() lowers it on GPUs that can't keep the frame rate
+    this.basePixelRatio = Math.min(window.devicePixelRatio, 1.5);
+    r.setPixelRatio(this.basePixelRatio);
     r.outputColorSpace = SRGBColorSpace;
     r.toneMapping = ACESFilmicToneMapping;
     r.shadowMap.enabled = true;
@@ -114,16 +140,28 @@ export class WorldScene {
     this.hemi = new HemisphereLight("#cfe3ff", "#5d6a3a", 0.9);
     this.scene.add(sun, sun.target, this.hemi);
 
-    const region = world.region;
-    this.terrain = new Terrain(region.extent, detailTexture(), fieldsTexture());
-    this.clouds = new Clouds(region.extent * 1.1);
+    // the cumulus field wraps around the camera (clouds.ts), so its size is set by the view, not the region
+    this.clouds = new Clouds(90000);
     this.volClouds = quality === "high" ? new VolumetricClouds() : null;
     this.clouds.mesh.visible = !this.volClouds;
-    this.scatter = new Scatter(region, quality);
-    this.airports = new AirportVisuals(region.airports, region.airportSizes);
-    if (quality === "high") for (const m of this.scatter.meshes) m.castShadow = true;
-    this.ocean.loadDepth(region.extent);
-    this.scene.add(this.terrain.group, this.ocean.mesh, this.clouds.mesh, this.deck.mesh, this.rain.mesh, this.airports.group, ...this.scatter.meshes);
+    if (world instanceof ProceduralWorld) {
+      const region = world.region;
+      this.terrain = new Terrain(region.extent, detailTexture(), fieldsTexture());
+      this.scatter = new Scatter(region, quality);
+      this.airports = new AirportVisuals(region.airports, region.airportSizes);
+      if (quality === "high") for (const m of this.scatter.meshes) m.castShadow = true;
+      this.ocean.loadDepth(region.extent, 2048);
+      this.scene.add(this.terrain.group, this.ocean.mesh, ...this.scatter.meshes);
+    } else {
+      // real world: tiles carry the land and the sea (the imagery shows the water); airports are
+      // built as the aircraft approaches them
+      this.terrain = new RealTerrain(world, quality);
+      this.scatter = null;
+      this.airports = new AirportVisuals(world.airports(), world.airportSizes, 25000);
+      this.ocean.mesh.visible = false;
+      this.scene.add(this.terrain.group);
+    }
+    this.scene.add(this.clouds.mesh, this.deck.mesh, this.rain.mesh, this.airports.group);
 
     this.setTime(this.hours);
   }
@@ -157,6 +195,26 @@ export class WorldScene {
     this.lightBasis.lookAt(new Vector3(), this.sunDir.clone().negate(), up);
     this.lightBasisInv.copy(this.lightBasis).invert();
     this.applyAtmosphere(true);
+  }
+
+  /** Rough on-screen brightness (0…1, display space) along the camera ray through an NDC point —
+      for the HUD's adaptive contrast. Sky: the haze colour at the horizon, deeper blue (darker)
+      overhead; ground and sea: darker than the haze, fading into it towards the horizon. Clouds
+      and overcast are carried by the haze colour, which the weather already greys. */
+  luminanceAt(camera: PerspectiveCamera, ndcX: number, ndcY: number): number {
+    const d = this.probeDir.set(ndcX, ndcY, 0.5).unproject(camera).sub(camera.position).normalize();
+    const c = this.probeCol.copy(this.fog.color).convertLinearToSRGB();
+    const haze = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const exposure = Math.min(1.2, this.renderer.toneMappingExposure / 0.56);
+    let lum: number;
+    if (d.y >= 0) lum = haze * (1 - 0.35 * smooth(0, 0.5, d.y));
+    else {
+      const ground = haze * (this.weather && this.weather.overcast > 0.6 ? 0.6 : 0.45);
+      // looking down from high up, haze lightens the ground; near the horizon it merges into it
+      const hazeMix = smooth(-0.3, 0, d.y) * 0.8 + Math.min(0.3, camera.position.y / 20000);
+      lum = ground + (haze - ground) * Math.min(1, hazeMix);
+    }
+    return Math.min(1, lum * exposure);
   }
 
   /** Blend the sky into the haze colour at the horizon so distant terrain meets it without a seam. */
@@ -259,15 +317,15 @@ export class WorldScene {
     // the clear sky disappears under a full overcast deck (looking up from below it)
     this.sky.visible = !(this.weather && this.weather.overcast > 0.85 && cam.y < this.deck.base);
     this.terrain.update(cam, now);
-    this.ocean.update(cam, t);
+    if (this.ocean.mesh.visible) this.ocean.update(cam, t);
     this.clouds.update(cam, now);
     const dt = this.lastUpdate ? Math.min((now - this.lastUpdate) / 1000, 0.25) : 0;
     this.lastUpdate = now;
     this.volClouds?.drift(sim.windVel.x, sim.windVel.z, dt);
     this.deck.update(cam, sim.windVel, t);
-    this.scatter.update(cam, now);
+    this.scatter?.update(cam, now);
     this.airports.setGuide(guide);
-    this.airports.update(camera, sim.windVel, !!guide && sim.agl > 5);
+    this.airports.update(camera, sim.windVel, !!guide && sim.agl > 5, now);
     this.sky.material.uniforms.time.value = (this.skyTime += 1 / 60);
     this.placeShadow(focus, sim.agl);
 
@@ -315,8 +373,65 @@ export class WorldScene {
   }
 
   /** Draw a frame: through the glare / lens pipeline on High, straight to the screen on Low. */
+  /** Keep the frame rate up on any machine: measure frame time and step the render resolution
+      down (to 55 %) when frames take over 20 ms, back up when there is headroom; on High, if
+      that is not enough, fall back to billboard clouds, then drop post-processing. Changes are
+      at most once a second, and a scale that proved too slow becomes the ceiling, so it settles
+      instead of see-sawing. Ignores long gaps (tab in the background, loading). */
+  private adapt(now: number): void {
+    const dt = now - this.lastFrame;
+    this.lastFrame = now;
+    if (dt <= 0 || dt > 250) return;
+    this.frameEma += (dt - this.frameEma) * 0.08;
+    if (now - this.lastChange < 1000) return;
+    const slow = this.frameEma > 20, fast = this.frameEma < 17.5;
+    this.slowSince = slow ? this.slowSince || now : 0;
+    this.fastSince = fast ? this.fastSince || now : 0;
+    if (slow && now - this.slowSince > 1200) {
+      if (this.resScale > 0.56) {
+        this.resCeiling = Math.min(this.resCeiling, this.resScale);
+        this.setResScale(Math.max(0.55, this.resScale * 0.85));
+      } else if (this.quality === "high" && this.shed < 2) {
+        this.shed++;
+        if (this.shed === 1) {
+          this.post?.setClouds(false);
+          this.clouds.mesh.visible = true;
+          this.onShed?.("simpler clouds");
+        } else this.onShed?.("no glow effects");
+        this.setResScale(Math.min(1, this.resScale / 0.7));
+        this.resCeiling = 1;
+      }
+      this.lastChange = now;
+      this.slowSince = 0;
+    } else if (fast && now - this.fastSince > 4000 && this.resScale < this.resCeiling - 0.01) {
+      this.setResScale(Math.min(this.resCeiling - 0.02, this.resScale * 1.1));
+      this.lastChange = now;
+      this.fastSince = 0;
+    }
+  }
+
+  private setResScale(s: number): void {
+    this.resScale = s;
+    this.renderer.setPixelRatio(this.basePixelRatio * s);
+    const size = this.renderer.getSize(new Vector2());
+    this.renderer.setSize(size.x, size.y, false);
+    this.post?.setSize(size.x, size.y);
+  }
+
+  /** Compile every material in the scene in the background (parallel shader compile where the
+      browser supports it) so the first frames do not stall one shader at a time. */
+  warmUp(camera: PerspectiveCamera): Promise<void> {
+    return this.renderer.compileAsync(this.scene, camera).then(() => undefined, () => undefined);
+  }
+
+  /** For the dev console: what the performance scaling has done. */
+  get perf(): { fps: number; scale: number; shed: number } {
+    return { fps: Math.round(1000 / this.frameEma), scale: +this.resScale.toFixed(2), shed: this.shed };
+  }
+
   render(camera: PerspectiveCamera): void {
-    if (this.quality === "high") {
+    this.adapt(performance.now());
+    if (this.quality === "high" && this.shed < 2) {
       if (!this.post) {
         this.post = new PostFX(this.renderer, this.scene, camera, this.volClouds);
         const s = this.renderer.getSize(new Vector2());

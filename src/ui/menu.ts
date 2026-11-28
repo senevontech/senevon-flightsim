@@ -1,11 +1,20 @@
 /* Pause menu / settings panel: works with mouse and touch. Opening it pauses the flight.
-   Sections: Fly, Mayday, Weather, Assists, Controls, Graphics, Keys. */
+   Sections: Fly, World, Hangar, Mayday, Weather, Assists, Controls, Graphics, Keys. */
 import type { Airport } from "../world/WorldProvider";
 import type { AssistPreset } from "../sim/assists";
 import { WEATHER_PRESETS, type Weather, type WeatherPreset } from "../gameplay/weather";
 import type { MaydayDef, MaydayId } from "../gameplay/mayday";
 
 export type Sensitivity = "low" | "medium" | "high";
+
+/** A search result in the World tab. */
+export interface WorldHit {
+  ident: string;
+  name: string;
+  place: string;
+  country: string;
+  size: number;
+}
 
 export interface HangarEntry {
   id: string;
@@ -35,6 +44,9 @@ export interface MenuState {
   storeAvailable: boolean;
   devBuild: boolean;
   devUnlockAll: boolean;
+  worldMode: "custom" | "real";
+  /** Real world: the airport the map is centred on, e.g. "EGLL · London Heathrow Airport". */
+  realHome: string | null;
 }
 
 export interface MenuActions {
@@ -56,7 +68,15 @@ export interface MenuActions {
   weatherPreset(p: WeatherPreset): void;
   weatherField(key: keyof Weather, value: number | boolean): void;
   devUnlockAll(on: boolean): void;
+  /** Switch maps (reloads the game). */
+  worldMode(m: "custom" | "real"): void;
+  /** Real world: fly from this airport (reloads the game). */
+  realAirport(ident: string): void;
+  searchAirports(query: string): Promise<WorldHit[]>;
 }
+
+/** Text from data files goes into HTML: escape it. */
+const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 const fmtTime = (h: number) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, "0")}`;
 
@@ -75,6 +95,10 @@ export class Menu {
   readonly el = document.createElement("div");
   private tab = "fly";
   private notice = "";
+  private query = "";
+  private searchTimer = 0;
+  private hits: WorldHit[] = [];
+  private searching = "";
 
   constructor(private airports: Airport[], private state: () => MenuState, private act: MenuActions) {
     this.el.className = "menu-overlay hidden";
@@ -113,12 +137,20 @@ export class Menu {
         case "wx": this.act.weatherPreset(arg as WeatherPreset); break;
         case "lightning": this.act.weatherField("lightning", !s.weather.lightning); break;
         case "dev": this.act.devUnlockAll(!s.devUnlockAll); break;
+        case "world": return this.act.worldMode(arg as "custom" | "real");
+        case "real": return this.act.realAirport(arg);
       }
       this.render();
     });
-    // weather sliders apply live
+    // weather sliders apply live; the airport search updates its results as you type
     this.el.addEventListener("input", (e) => {
       const t = e.target as HTMLInputElement;
+      if (t.dataset.search !== undefined) {
+        this.query = t.value;
+        clearTimeout(this.searchTimer);
+        this.searchTimer = window.setTimeout(() => void this.runSearch(), 160);
+        return;
+      }
       const key = t.dataset.w as keyof Weather | undefined;
       if (!key) return;
       this.act.weatherField(key, Number(t.value));
@@ -127,6 +159,35 @@ export class Menu {
       if (out) out.textContent = fmt(Number(t.value));
       this.el.querySelectorAll(".seg.wx button").forEach((b) => b.classList.remove("on"));
     });
+  }
+
+  private async runSearch(): Promise<void> {
+    const q = this.query;
+    this.searching = "Loading airports…";
+    this.renderHits();
+    try {
+      this.hits = await this.act.searchAirports(q);
+      this.searching = q.trim().length >= 2 && !this.hits.length ? "No airport found." : "";
+    } catch {
+      this.hits = [];
+      this.searching = "Couldn't load the airport list (offline?).";
+    }
+    if (q === this.query) this.renderHits();
+  }
+
+  private hitsHtml(): string {
+    const SIZE = ["Small airport", "Airport", "Major airport"];
+    if (this.searching) return `<p class="hint">${this.searching}</p>`;
+    return this.hits.map((h) => `
+      <button class="row-btn" data-m="real:${esc(h.ident)}">
+        <span><b>${esc(h.ident)} · ${esc(h.name)}</b><small>${esc([h.place, h.country].filter(Boolean).join(", "))} · ${SIZE[h.size] ?? ""}</small></span><i class="chev">›</i>
+      </button>`).join("");
+  }
+
+  /** Refresh only the result list, so the search box keeps focus while typing. */
+  private renderHits(): void {
+    const box = this.el.querySelector("[data-results]");
+    if (box) box.innerHTML = this.hitsHtml();
   }
 
   get isOpen(): boolean {
@@ -154,7 +215,7 @@ export class Menu {
       `<div class="seg ${cls}">${items.map(([m, label, on]) => `<button data-m="${m}" class="${on ? "on" : ""}">${label}</button>`).join("")}</div>`;
     const toggle = (m: string, label: string, on: boolean, hint = "") =>
       `<button class="row-btn" data-m="${m}"><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ""}</span><i class="switch ${on ? "on" : ""}"></i></button>`;
-    const tabs = [["fly", "Fly"], ["hangar", "Hangar"], ["mayday", "Mayday"], ["weather", "Weather"], ["assists", "Assists"], ["controls", "Controls"], ["graphics", "Graphics"], ...(s.touch ? [] : [["keys", "Keys"]])];
+    const tabs = [["fly", "Fly"], ["world", "World"], ["hangar", "Hangar"], ["mayday", "Mayday"], ["weather", "Weather"], ["assists", "Assists"], ["controls", "Controls"], ["graphics", "Graphics"], ...(s.touch ? [] : [["keys", "Keys"]])];
     let body = "";
     if (this.tab === "fly") {
       body = `
@@ -169,6 +230,17 @@ export class Menu {
           return `<button class="row-btn ${i === s.airportIndex ? "current" : ""}" data-m="airport:${i}">
             <span><b>${a.id} · ${a.name}</b><small>Runway ${a.runways.map((x) => x.name).join("/")} · ${Math.round(r.length)} m ${r.surface === "grass" ? "grass" : "paved"} · elev ${Math.round(a.elevation * 3.281)} ft</small></span><i class="chev">›</i></button>`;
         }).join("")}</div>`;
+    } else if (this.tab === "world") {
+      body = `
+        <h4>Map</h4>
+        ${seg([["world:custom", "Coral Coast", s.worldMode === "custom"], ["world:real", "Real world", s.worldMode === "real"]])}
+        <p class="hint">${s.worldMode === "real"
+          ? `Real terrain and satellite imagery around <b>${esc(s.realHome ?? "")}</b>. Search any airport below to fly from there.`
+          : "Our own tropical islands: 14 airports. Or choose the real world and pick any airport on Earth."}</p>
+        <h4>Fly from any real airport</h4>
+        <input class="search" data-search type="search" placeholder="Code, name or city (e.g. EGLL, Mumbai, Innsbruck)" value="${esc(this.query)}" autocomplete="off" />
+        <div class="list" data-results>${this.hitsHtml()}</div>
+        <p class="hint">Changing the map reloads the game. Imagery: Sentinel-2 cloudless 2016 by EOX · Elevation: AWS Terrain Tiles · Airports: OurAirports.</p>`;
     } else if (this.tab === "hangar") {
       body = `<div class="list">${s.hangar.map((p) => `
           <button class="row-btn plane ${p.current ? "current" : ""}" data-m="plane:${p.id}">

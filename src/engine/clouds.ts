@@ -40,9 +40,15 @@ export class Clouds {
   private coverage = 0.6;
   readonly uniforms: Record<string, { value: unknown }>;
 
+  /** Size of the square cloud field; it repeats around the camera so clouds never run out. */
+  private field: number;
+  private cam = new Vector3();
+
   constructor(extent: number, seed = 5) {
+    this.field = extent;
     const r = rng(seed);
-    const clusters = 280;
+    // ~280 clusters per 72 km square (the original density)
+    const clusters = Math.round(280 * (extent / 72000) ** 2);
     for (let c = 0; c < clusters; c++) {
       const key = r();
       const cx = (r() - 0.5) * extent, cz = (r() - 0.5) * extent;
@@ -142,11 +148,18 @@ export class Clouds {
     this.writeMatrices();
   }
 
+  /** A puff's position in the copy of the field nearest the camera. */
+  private wrapped(src: number, out: Vector3): Vector3 {
+    const c = this.centers[src], F = this.field;
+    const wrap = (v: number, cam: number) => cam + ((((v - cam + F / 2) % F) + F) % F) - F / 2;
+    return out.set(wrap(c.x, this.cam.x), c.y, wrap(c.z, this.cam.z));
+  }
+
   private writeMatrices(): void {
-    const m = new Matrix4(), q = new Quaternion(), s = new Vector3();
+    const m = new Matrix4(), q = new Quaternion(), s = new Vector3(), p = new Vector3();
     this.order.forEach((src, i) => {
       const visible = this.keys[src] < this.coverage;
-      m.compose(this.centers[src], q, s.setScalar(visible ? this.scales[src] : 0));
+      m.compose(this.wrapped(src, p), q, s.setScalar(visible ? this.scales[src] : 0));
       this.mesh.setMatrixAt(i, m);
     });
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -155,7 +168,9 @@ export class Clouds {
   update(cam: Vector3, now: number): void {
     if (now - this.lastSort < 400) return;
     this.lastSort = now;
-    const d = this.centers.map((c) => c.distanceToSquared(cam));
+    this.cam.copy(cam);
+    const p = new Vector3();
+    const d = this.centers.map((_, i) => this.wrapped(i, p).distanceToSquared(cam));
     this.order.sort((a, b) => d[b] - d[a]);
     this.writeMatrices();
   }

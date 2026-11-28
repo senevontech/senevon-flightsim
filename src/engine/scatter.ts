@@ -12,8 +12,8 @@ import { rng } from "./textures";
 import type { CoralCoast } from "../world/procedural/coralCoast";
 
 const TILE = 1000;
-const RADIUS = 6500;
-const MAX_TILES = 150;
+/** Individual trees and houses out to this distance; beyond it the terrain colours carry the forest. */
+const RADIUS = { high: 4000, low: 2500 };
 
 type KindName = "tree" | "palm" | "house" | "block";
 
@@ -70,19 +70,20 @@ function facadeTexture(cols: number, rows: number, kind: "block" | "house"): Tex
 }
 
 function broadleafGeometry(): BufferGeometry {
-  const trunk = tinted(new CylinderGeometry(0.05, 0.08, 0.5, 6).translate(0, 0.25, 0), "#5a4330");
-  // a clumped crown of three overlapping blobs reads as foliage, not a lollipop
+  const trunk = tinted(new CylinderGeometry(0.05, 0.08, 0.5, 5, 1, true).translate(0, 0.25, 0), "#5a4330");
+  // a clumped crown of three overlapping blobs reads as foliage, not a lollipop; 20-sided blobs keep
+  // each tree near 70 triangles (thousands are on screen)
   const parts = [
-    new IcosahedronGeometry(0.34, 1).scale(1, 0.85, 1).translate(0, 0.66, 0),
-    new IcosahedronGeometry(0.26, 1).translate(0.2, 0.56, 0.08),
-    new IcosahedronGeometry(0.24, 1).translate(-0.16, 0.58, -0.14),
+    new IcosahedronGeometry(0.34, 0).scale(1, 0.85, 1).translate(0, 0.66, 0),
+    new IcosahedronGeometry(0.26, 0).translate(0.2, 0.56, 0.08).rotateY(0.7),
+    new IcosahedronGeometry(0.24, 0).translate(-0.16, 0.58, -0.14).rotateY(1.9),
   ].map((p) => tinted(p, "#ffffff"));
   return mergeGeometries([trunk, ...parts])!;
 }
 
 function palmGeometry(): BufferGeometry {
   const parts: BufferGeometry[] = [];
-  parts.push(tinted(new CylinderGeometry(0.035, 0.06, 1, 5).translate(0, 0.5, 0).rotateZ(0.12), "#7a6248"));
+  parts.push(tinted(new CylinderGeometry(0.035, 0.06, 1, 5, 1, true).translate(0, 0.5, 0).rotateZ(0.12), "#7a6248"));
   for (let k = 0; k < 6; k++) {
     // drooping fronds: flattened cones pointing outward
     const frond = new ConeGeometry(0.09, 0.62, 3).rotateZ(Math.PI / 2 + 0.5).translate(0.3, 0.92, 0).rotateY((k / 6) * Math.PI * 2);
@@ -111,19 +112,25 @@ export class Scatter {
   private queue: string[] = [];
   private lastPlan = -1;
   private zero = new Matrix4().makeScale(0, 0, 0);
+  private radius: number;
 
   constructor(private region: CoralCoast, quality: "low" | "high") {
+    this.radius = RADIUS[quality];
+    // enough slots for every tile inside the radius; only the slots in use are drawn (see drawCount)
+    const r = Math.ceil(this.radius / TILE);
+    const maxTiles = (2 * r + 1) ** 2;
     const foliage = new MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
     const palms = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
     const blocks = new MeshStandardMaterial({ vertexColors: true, roughness: 0.7, map: facadeTexture(4, 8, "block") });
     const houses = new MeshStandardMaterial({ vertexColors: true, roughness: 0.85, map: facadeTexture(3, 2, "house") });
     const mk = (geo: BufferGeometry, perTile: number, mat: MeshStandardMaterial): Kind => {
-      const mesh = new InstancedMesh(geo, mat, perTile * MAX_TILES);
+      const mesh = new InstancedMesh(geo, mat, perTile * maxTiles);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
       mesh.frustumCulled = false;
       mesh.receiveShadow = true;
       for (let i = 0; i < mesh.count; i++) mesh.setMatrixAt(i, this.zero);
       mesh.setColorAt(0, new Color(1, 1, 1)); // allocate instanceColor
+      mesh.count = 0;
       return { mesh, perTile };
     };
     const f = quality === "high" ? 1 : 0.5;
@@ -133,7 +140,15 @@ export class Scatter {
       house: mk(houseGeometry(), Math.round(70 * f), houses),
       block: mk(blockGeometry(), Math.round(30 * f), blocks),
     };
-    for (let s = MAX_TILES - 1; s >= 0; s--) this.freeSlots.push(s);
+    for (let s = maxTiles - 1; s >= 0; s--) this.freeSlots.push(s);
+  }
+
+  /** Draw only up to the highest slot in use (free slots are handed out lowest first, so the
+      tiles in use stay packed at the front and empty slots cost nothing on the GPU). */
+  private drawCount(): void {
+    let top = -1;
+    for (const slot of this.tiles.values()) top = Math.max(top, slot);
+    for (const k of Object.values(this.kinds)) k.mesh.count = (top + 1) * k.perTile;
   }
 
   get meshes(): InstancedMesh[] {
@@ -146,8 +161,8 @@ export class Scatter {
       this.lastPlan = now;
       const wanted = new Set<string>();
       const ti = Math.floor(cam.x / TILE), tj = Math.floor(cam.z / TILE);
-      const r = Math.ceil(RADIUS / TILE);
-      const radius = cam.y > 3000 ? 0 : RADIUS; // nothing to see from very high up
+      const r = Math.ceil(this.radius / TILE);
+      const radius = cam.y > 3000 ? 0 : this.radius; // nothing to see from very high up
       const list: [string, number][] = [];
       for (let j = -r; j <= r; j++) {
         for (let i = -r; i <= r; i++) {
@@ -166,6 +181,8 @@ export class Scatter {
           this.freeSlots.push(slot);
         }
       }
+      this.freeSlots.sort((a, b) => b - a); // pop() gives the lowest free slot
+      this.drawCount();
       list.sort((a, b) => a[1] - b[1]);
       this.queue = list.map(([k]) => k).filter((k) => !this.tiles.has(k));
     }
@@ -175,6 +192,7 @@ export class Scatter {
       this.tiles.set(key, slot);
       const [i, j] = key.split(":").map(Number);
       this.buildTile(i, j, slot);
+      this.drawCount();
     }
   }
 

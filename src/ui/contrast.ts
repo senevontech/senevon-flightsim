@@ -1,8 +1,11 @@
-/* Adaptive HUD contrast: a few times a second, copy the rendered frame into a tiny canvas,
-   measure the brightness behind each registered HUD element, and switch that element to dark
-   marks over bright sky / runway or light marks over dark ground / sea. Hysteresis stops it
-   flickering at the threshold. Must be called right after renderer.render() in the same frame
-   (the WebGL drawing buffer is still intact then). */
+/* Adaptive HUD contrast: a few times a second, estimate the brightness behind each registered HUD
+   element and switch it to dark marks over bright sky or light marks over dark ground and sea.
+   Hysteresis stops it flickering at the threshold.
+
+   The brightness comes from a probe (WorldScene.luminanceAt): it looks along the camera ray
+   through the element and returns how bright the sky or ground there is for the current time
+   and weather. Reading the rendered frame back from the GPU did the same job, but it made the
+   main thread wait for the GPU: a 20–370 ms freeze every time it ran. */
 import type { Tone } from "./instruments";
 
 interface Target {
@@ -11,21 +14,20 @@ interface Target {
   tone: Tone;
 }
 
-const W = 160, H = 90;
+/** Brightness (0 dark … 1 white, display space) behind a point given in normalised device
+    coordinates (x right, y up, −1…1). */
+export type LuminanceProbe = (ndcX: number, ndcY: number) => number;
+
 const TO_DARK = 0.6; // average luminance above which marks turn dark
 const TO_LIGHT = 0.48; // …and below which they turn light again
+// sample points across each element (fractions of its box)
+const SAMPLES: [number, number][] = [[0.5, 0.5], [0.2, 0.25], [0.8, 0.25], [0.2, 0.75], [0.8, 0.75]];
 
 export class AdaptiveContrast {
   private targets: Target[] = [];
-  private small = document.createElement("canvas");
-  private g: CanvasRenderingContext2D;
   private last = 0;
 
-  constructor(private source: HTMLCanvasElement) {
-    this.small.width = W;
-    this.small.height = H;
-    this.g = this.small.getContext("2d", { willReadFrequently: true })!;
-  }
+  constructor(private probe: LuminanceProbe) {}
 
   /** `apply` defaults to setting data-tone on the element (CSS does the rest). */
   register(el: HTMLElement, apply?: (t: Tone) => void): void {
@@ -35,31 +37,18 @@ export class AdaptiveContrast {
   }
 
   update(now: number): void {
-    if (now - this.last < 250) return;
+    if (now - this.last < 200) return;
     this.last = now;
     const vw = window.innerWidth, vh = window.innerHeight;
-    try {
-      this.g.drawImage(this.source, 0, 0, W, H);
-    } catch {
-      return;
-    }
-    const data = this.g.getImageData(0, 0, W, H).data;
     for (const t of this.targets) {
       const r = t.el.getBoundingClientRect();
       if (!r.width || !r.height) continue; // hidden elements have an empty box
-      const x0 = Math.max(0, Math.floor((r.left / vw) * W)), x1 = Math.min(W - 1, Math.ceil((r.right / vw) * W));
-      const y0 = Math.max(0, Math.floor((r.top / vh) * H)), y1 = Math.min(H - 1, Math.ceil((r.bottom / vh) * H));
-      let sum = 0, n = 0;
-      for (let y = y0; y <= y1; y++) {
-        for (let x = x0; x <= x1; x++) {
-          const k = (y * W + x) * 4;
-          // perceived luminance of the (already sRGB) pixel
-          sum += (0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2]) / 255;
-          n++;
-        }
+      let sum = 0;
+      for (const [fx, fy] of SAMPLES) {
+        const x = r.left + r.width * fx, y = r.top + r.height * fy;
+        sum += this.probe((x / vw) * 2 - 1, 1 - (y / vh) * 2);
       }
-      if (!n) continue;
-      const lum = sum / n;
+      const lum = sum / SAMPLES.length;
       const next: Tone = t.tone === "light" ? (lum > TO_DARK ? "dark" : "light") : (lum < TO_LIGHT ? "light" : "dark");
       if (next !== t.tone) {
         t.tone = next;

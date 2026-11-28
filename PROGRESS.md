@@ -93,6 +93,17 @@
 | R7-01 | P2 | GLB aircraft pipeline: per-aircraft spec (file, credit, licence), auto-fit to the flight model, moving parts by node name, prop blur, gear fold, coded model as instant fallback; coded parts now carry the standard node names | ✅ | Verified end to end with an exported test GLB (14 parts bound); 4 tests |
 | R7-02 | P2 | Pick open-licence (CC-BY) models for the five aircraft; owner downloads from Sketchfab (login needed) | 🟡 | Shortlist given 2026-11-24 |
 | R7-03 | P2 | Prepare each model in Blender (scripted): strip branding, split/rename parts, hinge origins, ≤ 25 k tris, Meshopt GLB; credit in docs/ASSETS.md + in-game | ⬜ | Blender 5.0 available locally |
+| R8-01 | P0 | Trees/houses drew every instance slot (150 tiles × all kinds, empty ones too) out to 6.5 km at ~250 tris a tree: 7.2 M triangles a frame. Now only the slots in use are drawn, radius 4 km High / 2.5 km Low, ~70-tri trees | ✅ | Low: 7.2 M → 0.57 M tris; worst frame 322 → 8 ms |
+| R8-02 | P0 | HUD adaptive contrast read the frame back from the GPU 4×/s (main thread waits on the GPU: 20–370 ms freezes). Replaced by a brightness probe along the camera ray (sky/ground/haze, time of day, weather) | ✅ | No readback at all now |
+| R8-03 | P1 | Automatic performance scaling: render resolution steps down when frames exceed 20 ms (to 55 %), back up with headroom; on High then billboard clouds, then no post; toast when an effect is shed. HUD DOM lookups cached | ✅ | `__skyward.scene.perf` in dev |
+| R8-04 | P1 | Loading: shader error checks only in dev; all shaders compiled in parallel (`compileAsync`) behind the loading bar | ✅ | 22 programs Low / 50 High; ~4–5 s to fly on a fast desktop |
+| R8-05 | P0 | Easy mode shoved the nose down right after every takeoff: the stall guard read a stale angle-of-attack rate at liftoff as a sudden pitch-up. Fixed; plus an Easy speed guard (hands off below ~1.3 × stall speed, the held attitude eases down) | ✅ | tests: touchFeel.test.ts (3) |
+| R8-06 | P1 | Phone stick: one response curve (assists) instead of two; default sensitivity full. Half stick now banks ~20° in Easy (was 9°) | ✅ | |
+| R8-07 | P1 | Phone UI, landscape only: digital speed / altitude / climb-rate readouts replace the four round gauges; right-thumb pad = round CAM · AP · ⟲ · GEAR over FLAP ▲ / FLAP ▼ / BRAKE beside the throttle; full screen + landscape lock on Start (Android); turn-sideways screen in portrait; antialiased canvas and up to 1.5× pixel density on Low | ✅ | Checked at 844×390, 740×360, 390×844 and desktop |
+| R9-01 | P1 | Bigger Coral Coast: 131 × 131 km (4× the area), 8 new outer islands (highlands, a second volcano, mesa, southern and twin islands, atolls) and 7 new airports SKY8–SKY14 sited by search (flat pad, land under it, 3° approaches clear both ways); island lookups skip far islands; minimap covers the whole region; cloud field wraps around the camera | ✅ | 14 airports pass the region tests |
+| R9-02 | P1 | Real-world mode ("World" tab): fly from any real airport (search by code, name, town); real elevation (AWS Terrain Tiles) under satellite imagery (Sentinel-2 cloudless 2016), tile quadtree with skirts, progressive imagery, runways flattened to published elevation, ~80 nearby real airports with every open runway, built as you approach; graded landings; satellite minimap; credits on screen | ✅ | Checked at LOWI (Innsbruck) and VABB (Mumbai), desktop and phone; 13 tests |
+| R9-03 | P2 | Imagery CDN/cache proxy before launch (EOX renders cold tiles in 20–50 s) | ⬜ | Owner decision: hosting |
+| R9-04 | P3 | Real-world mode: re-centre the map when flying > ~150 km from the start airport (airports and the flat projection are built around it) | ⬜ | |
 | R5-07 | P1 | Graphics step 1b: photo-based CC0 ground textures (needs the owner's OK to download asset packs) | ⬜ | |
 | R5-08 | P1 | Volumetric (ray-marched) cumulus on High: half-res march (≈0.5 MP) through a 1150–3400 m slab, weather map × height profile × 64³ Perlin-Worley noise, sun march + two-lobe phase + ambient, height haze per sample, stops at scene depth (log-depth decode), fly-through, wind drift, storm darkening; Low (phones) keeps the billboard puffs | ✅ | `src/engine/volumetricClouds.ts`, 5 tests; checked at noon / sunset / above / storm. Needs an fps check on a real desktop GPU (headless shots use software rendering) |
 | R5-09 | P1 | Roads, rivers, town street grids | ⬜ | |
@@ -169,6 +180,12 @@
 | 2026-11-24 | Volumetric clouds on High only, rendered at ≈ 0.5 MP and laid over the frame before glare; Low keeps billboards | Ray marching is too heavy for the phone budget; a fixed pixel count keeps cost flat on 4K / high-DPR screens |
 | 2026-11-24 | Cloud march samples textures with explicit LOD | Implicit mip selection is undefined inside the divergent march loop and showed as striped clouds |
 | 2026-11-23 | Integrate like DroidDoom (external game, sign-in hand-off, `sw:` shop items); never edit 7games | Owner rule + existing pattern |
+| 2026-11-28 | Phones: landscape only, on-screen stick (no tilt by default) | Owner choice; all layout effort goes into one orientation |
+| 2026-11-28 | Frame rate first: adaptive resolution and effect shedding instead of a fixed preset | The owner's laptop lagged on High; any machine should hold ~50–60 fps without settings |
+| 2026-11-28 | HUD contrast estimated from the scene, never read back from the GPU | GPU readback stalls the main thread (up to 370 ms) |
+| 2026-11-28 | Real-world mode with open data only (AWS terrain + EOX 2016 imagery + OurAirports); no Cesium / Google | Owner choice: no accounts or keys; Cesium's free tier is non-commercial |
+| 2026-11-28 | Own tile streamer instead of 3d-tiles-renderer | Open data is plain XYZ tiles; reuses our haze, lighting and WorldProvider; no extra dependency |
+| 2026-11-28 | Imagery capped at zoom 12 and progressive (coarse first, sharper as it arrives) | EOX renders uncached zoom 13–14 tiles in 20–50 s |
 
 ## Playtest log
 
@@ -196,3 +213,5 @@
 | 2026-11-24 | R2.1: transparent HUD, round 2 % frosted gauges |
 | 2026-11-23 | R2: glass HUD, taxi steering fix, mobile refinement, weather system, cloud/tree/building/farmland visuals, Mayday scenarios |
 | 2026-11-25 | Aircraft models can also be OBJ + MTL (glbModel.ts `loadObj`, Phong→PBR, `pivotParts` sets hinge/prop/gear origins automatically); verified in-game with a generated test OBJ; +1 test (117) |
+| 2026-11-28 | Playable pass: 12× fewer triangles, no GPU readback freezes, adaptive resolution, parallel shader compile, Easy takeoff nose-down bug fixed, linear phone stick, landscape phone UI with digital readouts and a compact thumb pad; tools/perf.js, tools/loadtime.js, tools/profsum.py and GPU=1 / PROFILE= in tools/shot.mjs; 120 tests |
+| 2026-11-28 | World features: Coral Coast 4× bigger (14 airports); real-world mode with airport search, real terrain + satellite imagery, real runways; World tab; tools/build-airports.py + public/data/airports.json; 133 tests |

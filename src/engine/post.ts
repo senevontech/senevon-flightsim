@@ -71,6 +71,11 @@ export class PostFX {
     this.clouds?.setCamera(camera);
   }
 
+  /** Turn the ray-marched clouds on or off (the scene's billboard clouds stand in when off). */
+  setClouds(on: boolean): void {
+    if (this.clouds) this.clouds.enabled = on;
+  }
+
   setSize(w: number, h: number): void {
     this.composer.setSize(w, h);
   }

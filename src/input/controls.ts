@@ -101,6 +101,9 @@ export class InputManager {
   private onKey(e: KeyboardEvent, down: boolean): void {
     const k = e.code;
     if (e.ctrlKey || e.metaKey || e.altKey) return; // leave browser shortcuts alone
+    // typing in a text box (the airport search) is not flying
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" && (t as HTMLInputElement).type !== "range" || t.tagName === "TEXTAREA")) return;
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab", "PageUp", "PageDown"].includes(k)) e.preventDefault();
     if (down) {
       if (!this.keys.has(k) && !e.repeat) {

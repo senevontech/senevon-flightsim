@@ -1,6 +1,9 @@
-/* Airport visuals for every airport in the world: runway surface + markings, apron, taxiway,
-   hangars / tower by airport size, PAPI lights (both runway ends), windsocks, and the approach
-   guide rings for the runway the player is heading for. */
+/* Airport visuals for every airport in the world: runway surfaces + markings (every runway),
+   apron, taxiway, hangars / tower by airport size, PAPI lights (both runway ends), windsocks,
+   and the approach guide rings for the runway the player is heading for.
+   Each airport lives in its own group. With `lazyRadius` set (the real-world mode, where an
+   area can hold a hundred airports), an airport is only built when the camera comes within
+   that distance and is disposed again well beyond it; runway textures are 5 MB each. */
 import {
   AdditiveBlending, BoxGeometry, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial,
   Object3D, PerspectiveCamera, PlaneGeometry, Sprite, SpriteMaterial, TorusGeometry, Vector3,
@@ -20,29 +23,74 @@ const glow = glowTexture();
 
 interface Papi { sprite: Sprite; pos: Vector3; angle: number }
 
+interface Site {
+  airport: Airport;
+  size: Size;
+  center: Vector3;
+  root: Group | null;
+  buildings: Group | null;
+  papis: Papi[];
+  socks: Object3D[];
+}
+
+/** Materials and textures shared by every airport (never disposed with a site). */
+const SHARED = new Set<unknown>([wall, roofMat, accent, asphalt, glassMat, glow]);
+
 export class AirportVisuals {
   readonly group = new Group();
-  private papis: Papi[] = [];
-  private sites: { center: Vector3; buildings: Group }[] = [];
-  private socks: Object3D[] = [];
+  private sites: Site[] = [];
   private gates = new Group();
   private guideFor: Runway | null = null;
+  private lastLazy = -Infinity;
 
-  constructor(airports: Airport[], sizes: Map<string, Size>) {
-    for (const a of airports) this.build(a, sizes.get(a.id) ?? "regional");
+  constructor(airports: Airport[], sizes: Map<string, Size>, private lazyRadius = 0) {
+    for (const a of airports) {
+      const r0 = a.runways[0];
+      const h = r0.headingDeg * DEG;
+      const center = new Vector3(r0.threshold.x + Math.sin(h) * r0.length / 2, a.elevation, r0.threshold.z - Math.cos(h) * r0.length / 2);
+      const site: Site = { airport: a, size: sizes.get(a.id) ?? "regional", center, root: null, buildings: null, papis: [], socks: [] };
+      this.sites.push(site);
+      if (!lazyRadius) this.build(site);
+    }
     this.group.add(this.gates);
   }
 
-  private build(a: Airport, size: Size): void {
-    const [r0, r1] = a.runways;
-    const h = r0.headingDeg * DEG;
-    const fx = Math.sin(h), fz = -Math.cos(h), rx = Math.cos(h), rz = Math.sin(h);
-    const center = new Vector3(r0.threshold.x + fx * r0.length / 2, a.elevation, r0.threshold.z + fz * r0.length / 2);
-    const y = a.elevation;
-    const grass = r0.surface === "grass";
+  /** Lazy mode: build the nearest unbuilt airport in range (one per call) and drop far ones. */
+  private stream(cam: Vector3, now: number): void {
+    if (now - this.lastLazy < 500) return;
+    this.lastLazy = now;
+    let next: Site | null = null, nextD = Infinity;
+    for (const s of this.sites) {
+      const d = Math.hypot(s.center.x - cam.x, s.center.z - cam.z);
+      if (s.root && d > this.lazyRadius * 1.4) this.dispose(s);
+      else if (!s.root && d < this.lazyRadius && d < nextD) { next = s; nextD = d; }
+    }
+    if (next) this.build(next);
+  }
 
-    // runway surface
-    const tex = grass ? grassRunwayTexture(r0) : runwayTexture(r0, r1?.name ?? "");
+  private dispose(s: Site): void {
+    s.root?.traverse((o) => {
+      const m = o as Mesh;
+      if (m.geometry) m.geometry.dispose();
+      const mats = (m as { material?: unknown }).material;
+      for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) {
+        const mm = mat as MeshStandardMaterial;
+        if (SHARED.has(mm)) continue;
+        if (mm.map && !SHARED.has(mm.map)) mm.map.dispose();
+        mm.dispose();
+      }
+    });
+    if (s.root) this.group.remove(s.root);
+    s.root = s.buildings = null;
+    s.papis = [];
+    s.socks = [];
+  }
+
+  /** One runway's surface (paved with markings, or a mown grass strip). */
+  private surface(root: Group, r0: Runway, r1: Runway | undefined, y: number): void {
+    const h = r0.headingDeg * DEG;
+    const center = new Vector3(r0.threshold.x + Math.sin(h) * r0.length / 2, y, r0.threshold.z - Math.cos(h) * r0.length / 2);
+    const tex = r0.surface === "grass" ? grassRunwayTexture(r0) : runwayTexture(r0, r1?.name ?? "");
     const surf = new Mesh(
       new PlaneGeometry(r0.width, r0.length),
       new MeshStandardMaterial({ map: tex, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 }),
@@ -50,7 +98,22 @@ export class AirportVisuals {
     surf.rotation.set(-Math.PI / 2, 0, -h);
     surf.position.copy(center).setY(y + 0.08);
     surf.receiveShadow = true;
-    this.group.add(surf);
+    root.add(surf);
+  }
+
+  private build(site: Site): void {
+    const a = site.airport, size = site.size;
+    const root = (site.root = new Group());
+    this.group.add(root);
+    const r0 = a.runways[0];
+    const h = r0.headingDeg * DEG;
+    const fx = Math.sin(h), fz = -Math.cos(h), rx = Math.cos(h), rz = Math.sin(h);
+    const center = site.center;
+    const y = a.elevation;
+    const grass = r0.surface === "grass";
+
+    // runway surfaces: the first pair, then any further runways (real airports)
+    for (let k = 0; k < a.runways.length; k += 2) this.surface(root, a.runways[k], a.runways[k + 1], y);
 
     // buildings on the right side of runway r0, near the middle
     const buildings = new Group();
@@ -83,12 +146,12 @@ export class AirportVisuals {
       buildings.add(place(g, r0.width / 2 + 200, -170));
     }
     buildings.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-    this.group.add(buildings);
-    this.sites.push({ center, buildings });
+    root.add(buildings);
+    site.buildings = buildings;
 
-    // windsock beside the first threshold, PAPI at both ends (paved runways)
-    this.socks.push(this.windsock(new Vector3(r0.threshold.x - rx * (r0.width / 2 + 30) + fx * 120, y, r0.threshold.z - rz * (r0.width / 2 + 30) + fz * 120)));
-    if (!grass) for (const r of a.runways) this.papi(r, y);
+    // windsock beside the first threshold, PAPI at both ends of every paved runway
+    site.socks.push(this.windsock(root, new Vector3(r0.threshold.x - rx * (r0.width / 2 + 30) + fx * 120, y, r0.threshold.z - rz * (r0.width / 2 + 30) + fz * 120)));
+    for (const r of a.runways) if (r.surface !== "grass") this.papi(site, r, y);
   }
 
   private hangar(scale: number): Group {
@@ -118,7 +181,7 @@ export class AirportVisuals {
     return t;
   }
 
-  private windsock(pos: Vector3): Object3D {
+  private windsock(root: Group, pos: Vector3): Object3D {
     const pole = new Mesh(new CylinderGeometry(0.08, 0.1, 6, 6), new MeshStandardMaterial({ color: "#ddd" }));
     const pivot = new Group();
     pivot.rotation.order = "YXZ"; // droop locally, then turn downwind
@@ -131,11 +194,11 @@ export class AirportVisuals {
     pole.position.y = 3;
     g.add(pole, pivot);
     g.position.copy(pos);
-    this.group.add(g);
+    root.add(g);
     return pivot;
   }
 
-  private papi(r: Runway, y: number): void {
+  private papi(site: Site, r: Runway, y: number): void {
     const h = r.headingDeg * DEG;
     const fx = Math.sin(h), fz = -Math.cos(h), rx = Math.cos(h), rz = Math.sin(h);
     [3.5, 3.17, 2.83, 2.5].forEach((angle, i) => {
@@ -146,8 +209,8 @@ export class AirportVisuals {
       const box = new Mesh(new BoxGeometry(1.2, 0.8, 0.6), new MeshStandardMaterial({ color: "#333" }));
       box.position.copy(pos).setY(y + 0.5);
       box.rotation.y = -h;
-      this.group.add(sprite, box);
-      this.papis.push({ sprite, pos, angle });
+      site.root!.add(sprite, box);
+      site.papis.push({ sprite, pos, angle });
     });
   }
 
@@ -171,22 +234,33 @@ export class AirportVisuals {
     }
   }
 
-  update(camera: PerspectiveCamera, wind: Vector3, showGates: boolean): void {
+  update(camera: PerspectiveCamera, wind: Vector3, showGates: boolean, now = performance.now()): void {
     const cam = camera.position;
-    for (const l of this.papis) {
-      const dist = Math.hypot(cam.x - l.pos.x, cam.z - l.pos.z);
-      l.sprite.visible = dist < 15000;
-      if (!l.sprite.visible) continue;
-      const ang = Math.atan2(cam.y - l.pos.y, dist) / DEG;
-      l.sprite.material.color.set(ang > l.angle ? "#ffffff" : "#ff2a1a");
-      l.sprite.scale.setScalar(Math.max(2, Math.hypot(dist, cam.y - l.pos.y) * 0.012));
-    }
-    for (const s of this.sites) s.buildings.visible = s.center.distanceTo(cam) < 14000;
+    if (this.lazyRadius) this.stream(cam, now);
     const ws = Math.hypot(wind.x, wind.z);
-    for (const sock of this.socks) {
-      sock.rotation.y = Math.atan2(wind.x, wind.z);
-      sock.rotation.x = (1 - Math.min(ws / 8, 1)) * 1.2;
+    for (const s of this.sites) {
+      if (!s.root) continue;
+      for (const l of s.papis) {
+        const dist = Math.hypot(cam.x - l.pos.x, cam.z - l.pos.z);
+        l.sprite.visible = dist < 15000;
+        if (!l.sprite.visible) continue;
+        const ang = Math.atan2(cam.y - l.pos.y, dist) / DEG;
+        l.sprite.material.color.set(ang > l.angle ? "#ffffff" : "#ff2a1a");
+        l.sprite.scale.setScalar(Math.max(2, Math.hypot(dist, cam.y - l.pos.y) * 0.012));
+      }
+      if (s.buildings) s.buildings.visible = s.center.distanceTo(cam) < 14000;
+      for (const sock of s.socks) {
+        sock.rotation.y = Math.atan2(wind.x, wind.z);
+        sock.rotation.x = (1 - Math.min(ws / 8, 1)) * 1.2;
+      }
     }
     this.gates.visible = showGates && !!this.guideFor;
+  }
+
+  /** Airports not built yet near the camera (lazy mode), for the loading screen. */
+  pendingNear(cam: Vector3, radius: number): number {
+    let n = 0;
+    for (const s of this.sites) if (!s.root && Math.hypot(s.center.x - cam.x, s.center.z - cam.z) < radius) n++;
+    return n;
   }
 }

@@ -10,6 +10,8 @@ import { ApPanel, type ApAction } from "./ui/apPanel";
 import { DEG, emptyControls, FT, KT } from "./sim/types";
 import { AIRCRAFT, AIRCRAFT_ORDER } from "./aircraft";
 import { ProceduralWorld } from "./world/procedural/ProceduralWorld";
+import { RealWorld } from "./world/real/RealWorld";
+import { loadAirportDb, type AirportDb } from "./world/real/airportDb";
 import { runwayCoords, type Airport, type Runway } from "./world/WorldProvider";
 import { InputManager, MOUSE_RANGE } from "./input/controls";
 import { TouchControls } from "./input/touch";
@@ -40,13 +42,33 @@ const canvas = document.getElementById("view") as HTMLCanvasElement;
 const coarse = matchMedia("(pointer: coarse)").matches;
 if (coarse) document.body.classList.add("touch");
 window.addEventListener("touchstart", () => document.body.classList.add("touch"), { once: true, passive: true });
-// developer URL options for screenshots and testing: ?quality=low|high&spawn=approach&time=0..4
+// developer URL options for screenshots and testing: ?quality=low|high&spawn=approach&time=0..4&airport=SKY10
 const devParams = new URLSearchParams(location.search);
 const storedQuality = devParams.get("quality") ?? store.get("quality");
 const quality: "low" | "high" = storedQuality === "low" || storedQuality === "high"
   ? storedQuality : coarse || Math.min(screen.width, screen.height) < 600 ? "low" : "high";
 
-const world = new ProceduralWorld();
+// ---- world: the custom Coral Coast map, or the real world around a chosen airport ----
+// (?mode=real&real=EGLL in dev; the menu's World tab sets these and reloads)
+export type WorldMode = "custom" | "real";
+const worldMode: WorldMode = (devParams.get("mode") ?? store.get("mode")) === "real" ? "real" : "custom";
+const AIRPORT_KEY = worldMode === "real" ? "realAirport" : "airport";
+let airportDb: AirportDb | null = null;
+let worldNote = "";
+async function makeWorld(): Promise<ProceduralWorld | RealWorld> {
+  if (worldMode !== "real") return new ProceduralWorld();
+  try {
+    airportDb = await loadAirportDb();
+    const home = airportDb.get(devParams.get("real") ?? store.get("realAirport") ?? "EGLL") ?? airportDb.get("EGLL")!;
+    return new RealWorld(home, airportDb);
+  } catch (e) {
+    console.warn("Real-world mode unavailable", e);
+    worldNote = "Real-world data couldn't load (offline?). Flying the Coral Coast instead.";
+    return new ProceduralWorld();
+  }
+}
+const world = await makeWorld();
+const realWorld = world instanceof RealWorld ? world : null;
 const airports = world.airports();
 const airportOf = new Map<Runway, Airport>();
 for (const a of airports) for (const r of a.runways) airportOf.set(r, a);
@@ -74,10 +96,10 @@ const rig = new CameraRig(cfg, canvas);
 if (import.meta.env.DEV) (window as unknown as { __skyward: unknown }).__skyward = { scene, world, get sim() { return sim; }, get model() { return model; }, rig };
 rig.ground = (x, z) => world.heightAt(x, z);
 const audio = new FlightAudio();
-const minimap = new Minimap(airports);
+const minimap = new Minimap(airports, realWorld?.frame ?? null);
 hud.mapSlot.append(minimap.el);
 // HUD text and marks flip dark / light depending on what is behind them
-const contrast = new AdaptiveContrast(canvas);
+const contrast = new AdaptiveContrast((x, y) => scene.luminanceAt(rig.camera, x, y));
 hud.registerContrast(contrast);
 const autopilot = new Autopilot();
 let apOn = false;
@@ -112,11 +134,24 @@ function applyWeather(save = true): void {
 }
 applyWeather(false);
 scene.onLightning = (delay) => audio.thunder(delay);
+scene.onShed = (what) => hud.toast(`Keeping it smooth: ${what}`);
+// real world: data credits on screen (CC BY / open-data terms; docs/ASSETS.md)
+if (realWorld) {
+  const credits = document.createElement("div");
+  credits.className = "credits";
+  credits.textContent = "Imagery: Sentinel-2 cloudless 2016 by EOX (s2maps.eu), modified Copernicus Sentinel data · Elevation: AWS Terrain Tiles (SRTM, USGS, others) · Airports: OurAirports";
+  document.getElementById("hud")!.append(credits);
+}
+if (worldNote) setTimeout(() => hud.toast(worldNote), 1500);
+if (realWorld) {
+  const h = document.querySelector("[data-k=loading] h2");
+  if (h) h.textContent = `Loading ${realWorld.home[1]}…`;
+}
 
 // ---- stick sensitivity ----
 const SENS: Record<Sensitivity, number> = { low: 0.6, medium: 0.8, high: 1 };
 const savedSens = store.get("sensitivity") as Sensitivity | null;
-let sensitivity: Sensitivity = savedSens && savedSens in SENS ? savedSens : coarse ? "medium" : "high";
+let sensitivity: Sensitivity = savedSens && savedSens in SENS ? savedSens : "high";
 input.sensitivity = SENS[sensitivity];
 const stick = emptyControls();
 const surfaceView = emptyControls();
@@ -137,7 +172,7 @@ let best: number | null = Number(store.get("bestLanding")) || null;
 let cardOpen = false;
 let timeIndex = Math.max(0, TIMES.indexOf(Number(store.get("time")) || 16.6));
 scene.setTime(TIMES[timeIndex]);
-let airportIndex = Math.max(0, airports.findIndex((a) => a.id === store.get("airport")));
+let airportIndex = Math.max(0, airports.findIndex((a) => a.id === (devParams.get("airport") ?? store.get(AIRPORT_KEY))));
 
 // ---- flight state ----
 const prevPos = new Vector3();
@@ -156,11 +191,14 @@ const windText = () => weatherText(weather);
 const tower = (a: Airport) => `${a.name} Tower`;
 
 /** The runway direction at an airport with the most headwind. */
+/** The runway most into the wind; among near-equal ones (within ~15°), the paved and longer
+    one (real airports list grass and glider strips beside the main runway). */
 function intoWind(a: Airport): Runway {
-  let best = a.runways[0], bestHead = -Infinity;
+  let best = a.runways[0], bestScore = -Infinity;
   for (const r of a.runways) {
     const head = Math.cos((r.headingDeg - sim.wind.fromDeg) * DEG);
-    if (head > bestHead) { bestHead = head; best = r; }
+    const score = head + (r.surface === "grass" || r.surface === "dirt" ? -0.05 : 0) + Math.min(r.length, 4000) / 4000 * 0.03;
+    if (score > bestScore) { bestScore = score; best = r; }
   }
   return best;
 }
@@ -254,6 +292,13 @@ function spawnApproach(): void {
   hud.radio(tower(a), `${CALLSIGN}, ${windText()}, runway ${r.name}, cleared to land.`);
 }
 
+/** At least 2 m of water (sea depth from the region, or the real bathymetry). */
+function deepWater(x: number, z: number): boolean {
+  if (world instanceof ProceduralWorld) return world.region.height(x, z) < -2;
+  const h = world.demHeight(x, z);
+  return h !== null && h < -2;
+}
+
 /** Floatplanes: start on open water near the selected airport, pointing into the wind. */
 function spawnWater(): void {
   if (!sim.hasFloats) return;
@@ -270,7 +315,7 @@ function spawnWater(): void {
       const ang = (k / 16) * Math.PI * 2;
       const x = cx + Math.cos(ang) * dist, z = cz + Math.sin(ang) * dist;
       let clear = true;
-      for (let t = 0; t <= 900 && clear; t += 75) clear = world.region.height(x + fx * t, z + fz * t) < -2;
+      for (let t = 0; t <= 900 && clear; t += 75) clear = deepWater(x + fx * t, z + fz * t);
       if (clear) spot = { x, z };
     }
   }
@@ -536,6 +581,8 @@ const menu = new Menu(airports, () => ({
   storeAvailable: entitlements.storeAvailable,
   devBuild: entitlements.devBuild,
   devUnlockAll: entitlements.devUnlockAll,
+  worldMode: realWorld ? "real" : "custom",
+  realHome: realWorld ? `${realWorld.home[0]} · ${realWorld.home[1]}` : null,
   canWaterStart: sim.hasFloats,
   hangar: AIRCRAFT_ORDER.map((id) => {
     const c = AIRCRAFT[id];
@@ -555,7 +602,7 @@ const menu = new Menu(airports, () => ({
   resume: () => menu.close(),
   runway: () => { menu.close(); spawnRunway(); },
   approach: () => { menu.close(); spawnApproach(); },
-  airport: (i) => { airportIndex = i; store.set("airport", airports[i].id); menu.close(); spawnRunway(); },
+  airport: (i) => { airportIndex = i; store.set(AIRPORT_KEY, airports[i].id); menu.close(); spawnRunway(); },
   assists: (p) => setAssists(p),
   invertPitch: (on) => { input.invertPitch = on; store.set("invertPitch", on ? "1" : "0"); },
   mouseFlying: (on) => setMouseFlying(on),
@@ -589,6 +636,20 @@ const menu = new Menu(airports, () => ({
     wxPreset = "custom";
     weatherBeforeStorm = null;
     applyWeather();
+  },
+  worldMode: (m) => {
+    if (m === (realWorld ? "real" : "custom")) return; // the map actually loaded (real can fall back)
+    store.set("mode", m);
+    location.reload();
+  },
+  realAirport: (ident) => {
+    store.set("mode", "real");
+    store.set("realAirport", ident);
+    location.reload();
+  },
+  searchAirports: async (q) => {
+    airportDb ??= await loadAirportDb();
+    return airportDb.search(q, 30);
   },
   devUnlockAll: (on) => { entitlements.devUnlockAll = on; },
   time: (i) => setTime(i),
@@ -635,7 +696,7 @@ input.onAction((a) => {
     case "approach": spawnApproach(); break;
     case "nextAirport":
       airportIndex = (airportIndex + 1) % airports.length;
-      store.set("airport", airports[airportIndex].id);
+      store.set(AIRPORT_KEY, airports[airportIndex].id);
       spawnRunway();
       break;
     case "time": {
@@ -686,7 +747,15 @@ window.addEventListener("keydown", (e) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && !menu.isOpen) menu.open();
 });
-document.querySelector(".rotate-hint")?.addEventListener("click", (e) => (e.currentTarget as HTMLElement).remove());
+// phones: the first tap on "Start flying" goes full screen (no browser bars) and locks landscape
+// where the browser allows it (Android Chrome; iPhones keep the rotate hint instead)
+document.querySelector("[data-k=start]")?.addEventListener("click", () => {
+  if (!document.body.classList.contains("touch") || document.fullscreenElement) return;
+  const orient = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+  document.documentElement.requestFullscreen?.({ navigationUI: "hide" })
+    .then(() => orient.lock?.("landscape"))
+    .catch(() => { /* not allowed here: the rotate hint covers portrait */ });
+});
 
 // ---- resize ----
 function resize(): void {
@@ -703,6 +772,8 @@ let acc = 0;
 let crashShown = false;
 let loading = true;
 let loadPeak = 1;
+/** Shaders compiled (started once the terrain is in, so every material on screen is included). */
+let warm: "no" | "compiling" | "done" = "no";
 const towerTmp = new Vector3();
 
 function updateNav(): void {
@@ -815,12 +886,20 @@ function frame(now: number): void {
   scene.update(rig.camera, sim, renderPos, assists.flags.approachGuide ? autoGuide : null, now);
   if (running) radioEvents(autoGuide);
 
-  // first load: wait for the terrain around the aircraft
+  // real world: keep the physics' elevation tiles loaded under the aircraft
+  realWorld?.update(sim.pos.x, sim.pos.z);
+  // first load: wait for the terrain around the aircraft (real world: also the elevation under
+  // it and the airports close by)
   if (loading) {
-    const p = scene.terrain.pending;
+    const p = scene.terrain.pending + (realWorld
+      ? (realWorld.readyAt(sim.pos.x, sim.pos.z) ? 0 : 1) + scene.airports.pendingNear(sim.pos, 6000) : 0);
     loadPeak = Math.max(loadPeak, p);
     hud.setLoading(1 - p / loadPeak);
-    if (p === 0 && now > 600) {
+    if (warm === "no" && p === 0 && now > 600) {
+      warm = "compiling";
+      void scene.warmUp(rig.camera).then(() => { warm = "done"; });
+    }
+    if (p === 0 && warm === "done" && now > 600) {
       loading = false;
       hud.setLoading(null);
     }
@@ -854,8 +933,9 @@ function frame(now: number): void {
   minimap.draw(renderPos.x, renderPos.z, sim.headingDeg, now);
   updateNav();
   audio.update(sim, Math.max(stall, warning ? 1 : 0), rig.mode === "cockpit", !running);
-  scene.render(rig.camera);
-  contrast.update(now); // right after rendering, while the frame is still in the drawing buffer
+  // while shaders compile in the background, drawing would force them to finish one by one
+  if (warm !== "compiling") scene.render(rig.camera);
+  contrast.update(now);
   requestAnimationFrame(frame);
 }
 
