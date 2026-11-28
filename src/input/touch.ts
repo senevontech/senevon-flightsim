@@ -7,13 +7,14 @@ import type { InputManager } from "./controls";
 
 const clamp = (v: number, lo = -1, hi = 1) => Math.min(hi, Math.max(lo, v));
 
-/** Thumb offset (−1…1 of the stick radius) → stick input: a small dead zone, then straight.
-    The assists already shape the response (sim/assists.ts); a second curve here made the middle
-    of the stick feel dead (half deflection banked only 9° in Easy) and the edge abrupt. */
+/** Thumb offset (−1…1 of the stick radius) → stick input: a 12 % dead zone (a resting thumb
+    wobbles a few pixels; that must not steer), then straight. The assists already shape the
+    response (sim/assists.ts); a second curve here made the middle of the stick feel dead. */
+export const STICK_DEAD = 0.12;
 export function stickAxis(v: number): number {
   const a = Math.abs(v);
-  if (a < 0.06) return 0;
-  return Math.sign(v) * Math.min(1, (a - 0.06) / 0.94);
+  if (a < STICK_DEAD) return 0;
+  return Math.sign(v) * Math.min(1, (a - STICK_DEAD) / (1 - STICK_DEAD));
 }
 
 export class TouchControls {
@@ -24,6 +25,9 @@ export class TouchControls {
   private thrLabel!: HTMLElement;
   private stickId: number | null = null;
   private stickOrigin = { x: 0, y: 0 };
+  /** Where the thumb puts the stick; the input follows it smoothly (~70 ms) to iron out jitter. */
+  private target = { pitch: 0, roll: 0 };
+  private lastUpdate = 0;
   private tiltOn = false;
   private tiltZero = { beta: 0, gamma: 0 };
   private lastOrientation: { beta: number; gamma: number } | null = null;
@@ -91,6 +95,7 @@ export class TouchControls {
       this.stickBase.style.left = this.stickBase.style.top = ""; // back to its rest spot
       this.knob.style.transform = "translate(-50%, -50%)";
       this.input.touch.pitch = this.input.touch.roll = 0;
+      this.target.pitch = this.target.roll = 0;
       this.input.touch.active = false;
     };
     zone.addEventListener("pointerup", end);
@@ -151,9 +156,9 @@ export class TouchControls {
     const l = Math.hypot(dx, dy);
     if (l > 1) { dx /= l; dy /= l; }
     this.knob.style.transform = `translate(calc(-50% + ${dx * R}px), calc(-50% + ${dy * R}px))`;
-    this.input.touch.roll = stickAxis(dx);
+    this.target.roll = stickAxis(dx);
     // stick convention: pull back (drag down) = nose up
-    this.input.touch.pitch = stickAxis(dy);
+    this.target.pitch = stickAxis(dy);
   }
 
   /** Show the GEAR button only on aircraft with retractable gear. */
@@ -194,8 +199,16 @@ export class TouchControls {
     if (this.lastOrientation) this.tiltZero = { ...this.lastOrientation };
   }
 
-  /** Call every frame: tilt → stick, throttle display. */
+  /** Call every frame: stick smoothing, tilt → stick, throttle display. */
   update(): void {
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - (this.lastUpdate || now)) / 1000);
+    this.lastUpdate = now;
+    if (this.stickId !== null) {
+      const k = 1 - Math.exp(-dt / 0.07);
+      this.input.touch.roll += (this.target.roll - this.input.touch.roll) * k;
+      this.input.touch.pitch += (this.target.pitch - this.input.touch.pitch) * k;
+    }
     if (this.tiltOn && this.lastOrientation) {
       const angle = (screen.orientation?.angle ?? 0) % 360;
       const db = this.lastOrientation.beta - this.tiltZero.beta;

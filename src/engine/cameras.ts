@@ -97,13 +97,14 @@ export class CameraRig {
 
   update(pos: Vector3, q: Quaternion, dt: number, groundY: number): void {
     this.place(pos, q, dt, groundY);
-    // small, smooth shake (summed sines: no jitter, no randomness between frames)
-    if (this.shake > 0.01 && this.mode !== "tower") {
+    // a gentle sway, not a vibration: low frequencies (1–3 Hz), cockpit only for the small
+    // stuff; the chase view only moves on real bumps (turbulence, hard landings)
+    if (this.shake > 0.02 && this.mode !== "tower" && this.mode !== "flyby") {
       this.shakeT += dt;
-      const t = this.shakeT, k = this.shake * (this.mode === "cockpit" ? 0.006 : 0.004);
-      this.camera.rotateX(k * (Math.sin(t * 23.1) + 0.6 * Math.sin(t * 37.7)));
-      this.camera.rotateY(k * 0.6 * Math.sin(t * 29.3 + 1.3));
-      this.camera.rotateZ(k * 0.8 * Math.sin(t * 17.9 + 0.7));
+      const t = this.shakeT, k = this.shake * (this.mode === "cockpit" ? 0.0025 : 0.0012);
+      this.camera.rotateX(k * (Math.sin(t * 9.1) + 0.5 * Math.sin(t * 15.7)));
+      this.camera.rotateY(k * 0.4 * Math.sin(t * 7.3 + 1.3));
+      this.camera.rotateZ(k * 0.6 * Math.sin(t * 6.1 + 0.7));
     }
   }
 

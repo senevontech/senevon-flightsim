@@ -874,16 +874,19 @@ function frame(now: number): void {
   surfaceView.yaw = sim.surfacePos.yaw;
   surfaceView.trim = controls.trim;
   model.update(renderPos, renderQ, surfaceView, sim, running ? dt * simRate : 0);
-  // camera shake: turbulence / g changes, runway roll, engine at high power (cockpit)
-  shake += ((Math.min(1, Math.abs(sim.gLoad - 1) * 1.5) + (sim.onGround ? Math.min(1, sim.groundSpeed / 30) * 0.6 : 0)
-    + (rig.mode === "cockpit" ? (sim.rpm / sim.engines[0].maxRpm) * 0.25 : 0)) - shake) * Math.min(1, dt * 6);
+  // camera shake: bumps (g changes beyond a small dead band), and in the cockpit a little runway
+  // roll and engine; slow to build, so steady flight and steady turns stay still
+  const bump = Math.max(0, Math.abs(sim.gLoad - 1) - 0.08) * 1.2;
+  const cockpitRumble = rig.mode === "cockpit"
+    ? (sim.onGround ? Math.min(1, sim.groundSpeed / 30) * 0.35 : 0) + (sim.rpm / sim.engines[0].maxRpm) * 0.1 : 0;
+  shake += (Math.min(1, bump + cockpitRumble) - shake) * Math.min(1, dt * 3);
   rig.shake = running ? shake : 0;
   rig.velocity.copy(sim.vel);
   towerPosition(nearestAirport(), towerTmp);
   rig.towerPos.copy(towerTmp);
   rig.update(renderPos, renderQ, dt, world.heightAt(rig.camera.position.x, rig.camera.position.z));
   const autoGuide = guideRunway && !sim.onGround ? guideRunway : pickGuide();
-  scene.update(rig.camera, sim, renderPos, assists.flags.approachGuide ? autoGuide : null, now);
+  scene.update(rig.camera, sim, renderPos, now);
   if (running) radioEvents(autoGuide);
 
   // real world: keep the physics' elevation tiles loaded under the aircraft

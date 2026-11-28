@@ -268,7 +268,7 @@ export class Menu {
     } else if (this.tab === "assists") {
       body = `
         ${seg([["assists:easy", "Easy", s.assists === "easy"], ["assists:normal", "Normal", s.assists === "normal"], ["assists:real", "Real", s.assists === "real"]])}
-        <p class="hint">${s.assists === "easy" ? "The plane holds its nose where you leave it and levels its wings when you let go. Stall and g-protection, approach rings, unlimited rewind." :
+        <p class="hint">${s.assists === "easy" ? "The plane holds its nose where you leave it and levels its wings when you let go. Stall and g-protection, unlimited rewind." :
           s.assists === "normal" ? "Holds whatever bank you leave it in. Turns are coordinated; light stall protection; 3 rewinds per flight." :
           "No help at all: your input moves the control surfaces directly. No rewind."}</p>`;
     } else if (this.tab === "controls") {

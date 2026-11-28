@@ -195,6 +195,14 @@ export class AircraftSim {
     this.q.multiply(dq);
     const dir = tmp.set(Math.sin(heading) * Math.cos(path), Math.sin(path), -Math.cos(heading) * Math.cos(path));
     this.vel.copy(dir).multiplyScalar(s.speed);
+    // airborne starts move with the air mass: `speed` is airspeed along the heading. Spawning
+    // with ground speed along the heading instead meant a sudden sideslip in any crosswind, and
+    // the aircraft swung 6–8° into the wind on its own a few seconds after every spawn.
+    const agl = this.pos.y - this.world.heightAt(this.pos.x, this.pos.z);
+    if (s.speed > 0 && agl > 3) {
+      windAt(this.wind, this.pos, agl, 0, windW);
+      this.vel.add(windW);
+    }
     this.prevVel.copy(this.vel);
     this.w.set(0, 0, 0);
     this.flaps = s.flaps ?? 0;

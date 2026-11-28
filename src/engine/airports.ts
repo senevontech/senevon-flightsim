@@ -1,12 +1,11 @@
 /* Airport visuals for every airport in the world: runway surfaces + markings (every runway),
-   apron, taxiway, hangars / tower by airport size, PAPI lights (both runway ends), windsocks,
-   and the approach guide rings for the runway the player is heading for.
+   apron, taxiway, hangars / tower by airport size, PAPI lights (both runway ends) and windsocks.
    Each airport lives in its own group. With `lazyRadius` set (the real-world mode, where an
    area can hold a hundred airports), an airport is only built when the camera comes within
    that distance and is disposed again well beyond it; runway textures are 5 MB each. */
 import {
-  AdditiveBlending, BoxGeometry, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial,
-  Object3D, PerspectiveCamera, PlaneGeometry, Sprite, SpriteMaterial, TorusGeometry, Vector3,
+  AdditiveBlending, BoxGeometry, CylinderGeometry, DoubleSide, Group, Mesh, MeshStandardMaterial,
+  Object3D, PerspectiveCamera, PlaneGeometry, Sprite, SpriteMaterial, Vector3,
 } from "three";
 import { glowTexture, grassRunwayTexture, runwayTexture } from "./textures";
 import type { Airport, Runway } from "../world/WorldProvider";
@@ -39,8 +38,6 @@ const SHARED = new Set<unknown>([wall, roofMat, accent, asphalt, glassMat, glow]
 export class AirportVisuals {
   readonly group = new Group();
   private sites: Site[] = [];
-  private gates = new Group();
-  private guideFor: Runway | null = null;
   private lastLazy = -Infinity;
 
   constructor(airports: Airport[], sizes: Map<string, Size>, private lazyRadius = 0) {
@@ -52,7 +49,6 @@ export class AirportVisuals {
       this.sites.push(site);
       if (!lazyRadius) this.build(site);
     }
-    this.group.add(this.gates);
   }
 
   /** Lazy mode: build the nearest unbuilt airport in range (one per call) and drop far ones. */
@@ -214,27 +210,7 @@ export class AirportVisuals {
     });
   }
 
-  /** Show approach rings for this runway (null hides them). */
-  setGuide(r: Runway | null): void {
-    if (r === this.guideFor) return;
-    this.guideFor = r;
-    this.gates.clear();
-    if (!r) return;
-    const h = r.headingDeg * DEG;
-    const fx = Math.sin(h), fz = -Math.cos(h);
-    const mat = new MeshBasicMaterial({ color: "#ff8a3d", transparent: true, opacity: 0.55, side: DoubleSide, depthWrite: false });
-    const geo = new TorusGeometry(16, 0.35, 6, 40);
-    for (let d = 500; d <= 5000; d += 450) {
-      const g = new Mesh(geo, mat);
-      const along = r.aimPoint - d;
-      g.position.set(r.threshold.x + fx * along, r.threshold.y + Math.tan(3 * DEG) * d + 3, r.threshold.z + fz * along);
-      g.rotation.y = -h;
-      g.scale.y = 0.62;
-      this.gates.add(g);
-    }
-  }
-
-  update(camera: PerspectiveCamera, wind: Vector3, showGates: boolean, now = performance.now()): void {
+  update(camera: PerspectiveCamera, wind: Vector3, now = performance.now()): void {
     const cam = camera.position;
     if (this.lazyRadius) this.stream(cam, now);
     const ws = Math.hypot(wind.x, wind.z);
@@ -254,7 +230,6 @@ export class AirportVisuals {
         sock.rotation.x = (1 - Math.min(ws / 8, 1)) * 1.2;
       }
     }
-    this.gates.visible = showGates && !!this.guideFor;
   }
 
   /** Airports not built yet near the camera (lazy mode), for the loading screen. */

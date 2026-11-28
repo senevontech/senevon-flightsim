@@ -38,6 +38,20 @@ describe("phone stick feel (Easy)", () => {
     expect(Math.abs(sim.pitchDeg - 1)).toBeLessThan(2);
   });
 
+  it("doesn't swing into a crosswind on its own after an airborne spawn", () => {
+    const sim = new AircraftSim(AIRCRAFT["sparrow-s1"], new FlatWorld());
+    sim.wind = { fromDeg: 90, speed: 12 * KT, gust: 0, turbulence: 0 }; // straight across
+    sim.reset({ pos: new Vector3(0, 800, 0), headingDeg: 0, speed: 95 * KT, pitchDeg: 1, flaps: 0, gear: 1, throttle: 0.65 });
+    const assists = new Assists();
+    const raw = emptyControls(), out = emptyControls();
+    raw.throttle = 0.65;
+    for (let i = 0; i < 120 * 30; i++) {
+      assists.apply(raw, sim, SIM_DT, out);
+      sim.step(SIM_DT, out);
+    }
+    expect(Math.abs(((sim.headingDeg + 540) % 360) - 180)).toBeLessThan(1.5);
+  });
+
   it("answers the stick in proportion", () => {
     const bankAt = (thumb: number) => {
       const { sim, raw, fly } = airborne("easy");

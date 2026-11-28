@@ -21,7 +21,6 @@ import { ProceduralWorld } from "../world/procedural/ProceduralWorld";
 import type { RealWorld } from "../world/real/RealWorld";
 import { RealTerrain } from "./realTerrain";
 import type { AircraftSim } from "../sim/aircraft";
-import type { Runway } from "../world/WorldProvider";
 import type { Weather } from "../gameplay/weather";
 import { DEG } from "../sim/types";
 
@@ -310,7 +309,7 @@ export class WorldScene {
     this.scene.environmentIntensity = b.env * (1 - 0.45 * oc);
   }
 
-  update(camera: PerspectiveCamera, sim: AircraftSim, focus: Vector3, guide: Runway | null, now: number): void {
+  update(camera: PerspectiveCamera, sim: AircraftSim, focus: Vector3, now: number): void {
     const cam = camera.position;
     const t = now / 1000;
     this.sky.position.copy(cam);
@@ -324,8 +323,7 @@ export class WorldScene {
     this.volClouds?.drift(sim.windVel.x, sim.windVel.z, dt);
     this.deck.update(cam, sim.windVel, t);
     this.scatter?.update(cam, now);
-    this.airports.setGuide(guide);
-    this.airports.update(camera, sim.windVel, !!guide && sim.agl > 5, now);
+    this.airports.update(camera, sim.windVel, now);
     this.sky.material.uniforms.time.value = (this.skyTime += 1 / 60);
     this.placeShadow(focus, sim.agl);
 
